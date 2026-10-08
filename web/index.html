@@ -101,6 +101,7 @@
   ol.looks{padding-left:20px;margin:4px 0} ol.looks li{margin:8px 0;display:grid;grid-template-columns:1fr 200px;gap:12px;align-items:center} ol.looks li canvas{width:200px;height:130px;border-radius:4px;background:var(--pitch)} @media (max-width:520px){ol.looks li{grid-template-columns:1fr} ol.looks li canvas{width:100%;height:auto}} ol.looks button{padding:0 6px;font-size:12px;border-color:transparent;color:var(--amber)}
   .points{display:grid;gap:6px;margin:6px 0} .point{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:start;border-top:1px solid var(--line);padding-top:6px;font-size:14px} .point .min{font-size:22px;font-weight:600;line-height:1} .point .row{margin:0}
   .tag{position:absolute;pointer-events:none}
+  .plan .wk{border-top:1px solid var(--line);padding:6px 0} .plan .wk>b{font-size:18px;font-weight:600} .plan .sess{display:grid;grid-template-columns:92px 1fr;gap:8px;padding:3px 0;font-size:13px} .plan .day{font-weight:600;font-size:15px;color:var(--mute)} .plan .dr{display:block} .plan .dr b{font-weight:600}
   @media (prefers-reduced-motion:reduce){.caption{transition:none}}
 </style>
 </head>
@@ -349,6 +350,7 @@ function renderPanel(){
     h+=`<h3>Best at</h3><p>${pb.best_at.map(b=>b.friendly).join(', ')}.</p>`;
     h+=`<h3>Train like him</h3>`+pb.train_like_him.map(d=>`<div class="drill"><b>${d.drill}</b> <span class="why">for ${d.friendly}</span><br>${d.how}</div>`).join('');
     h+=`<h3>What he could work on</h3>`+pb.work_on.map(d=>`<div class="drill"><b>${d.drill}</b> <span class="why">for ${d.friendly}</span><br>${d.how}</div>`).join('');
+    h+=`<h3>Your four-week plan <span class="pill">Coach agent</span></h3><div class="row"><input id="planName" placeholder="first name" style="width:120px"><select id="planAge"><option value="u9">Under 9</option><option value="u11" selected>Under 11</option><option value="u13">Under 13</option><option value="u15">Under 15</option></select><button id="planBtn">Make my plan</button></div><div id="planOut">${planHtml(B.plans&&B.plans[focus])}</div>`;
     h+=`<h3>Compare your style</h3><p class="why">Put in one of your recent matches. We match the shape of your game, not the size of the numbers.</p><div class="form">`;
     for(const [k,l] of [['minutes','minutes played'],['passes','passes'],['passes_complete','passes completed'],['shots','shots'],['goals','goals'],['tackles_won','tackles won'],['interceptions','passes cut out']])h+=`<div><label>${l}</label><input type="number" min="0" id="kid_${k}" value="${k==='minutes'?60:0}"></div>`;
     h+=`</div><button id="matchStyle">Find my style</button><div id="styleOut"></div>`;
@@ -453,6 +455,9 @@ function miniPitch(canvas,d,pid){const g=canvas.getContext('2d');const MW=400,MH
   else if(d.kind==='thirds'){const sh=d.shares||{};const names=['defensive third','middle third','attacking third'];for(let i=0;i<3;i++){const share=sh[names[i]]||0;const u0=i/3,u1=(i+1)/3;const x0=dir>0?u0*L:(1-u1)*L,x1=dir>0?u1*L:(1-u0)*L;g.fillStyle=`rgba(242,179,91,${0.08+share*0.6})`;g.fillRect(mx(x0),my(0),mx(x1)-mx(x0),my(W)-my(0));g.fillStyle='rgba(243,239,230,.9)';g.font='600 18px "Barlow Condensed"';g.textAlign='center';g.fillText(`${Math.round(share*100)}%`,mx((x0+x1)/2),my(34)+6)}}
 }
 
+function planHtml(p){if(!p||!p.plan||!p.plan.weeks)return'';const pl=p.plan;
+  return `<div class="plan">${pl.weeks.map(w=>`<div class="wk"><b class="cond">Week ${w.week}</b> <span class="why">${w.theme}</span>${w.sessions.map(s=>`<div class="sess"><span class="cond day">${s.day} · ${s.minutes} min</span><div>${s.drills.map(d=>`<span class="dr"><b>${d.name}</b> ${d.minutes}′ <span class="why">${d.coaching_point}</span></span>`).join('')}</div></div>`).join('')}</div>`).join('')}
+  <p><b>Measure:</b> ${pl.measure}</p><p class="note" style="border:0;margin:0">${pl.note_to_player}</p><p class="why">${p.backend==='local'?'Local planner':'Coach agent on Microsoft Foundry'} · Plan Verifier: ${p.problems.length?p.problems.length+' problems listed':'every drill is from the library, every session fits the age'}${p.attempts>1?' · '+p.attempts+' drafts':''}</p></div>`}
 function pretty(k){return k.replace('_p90',' per 90').replace(/_/g,' ')}
 function fmtv(k,v){if(k==='possession'||k==='pass_accuracy')return Math.round(v*100)+'%';return typeof v==='number'?(Number.isInteger(v)?v:v.toFixed(2)):v}
 function wirePanel(){
@@ -466,6 +471,7 @@ function wirePanel(){
   const l=$('#lang');if(l)l.onchange=()=>{lang=l.value;renderPanel()};
   const c=$('#club');if(c)c.onchange=()=>{club=c.value;renderPanel()};
   const ms=$('#matchStyle');if(ms)ms.onclick=matchStyle;
+  const pbn=$('#planBtn');if(pbn)pbn.onclick=async()=>{const out=$('#planOut');out.innerHTML='<p class="why">asking the Coach…</p>';try{const r=await fetch('/api/plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({player:focus,age_band:$('#planAge').value,first_name:$('#planName').value||'you'})});const d=await r.json();out.innerHTML=planHtml(d)}catch(e){out.innerHTML=planHtml(B.plans&&B.plans[focus])+'<p class="why">No server here, so this is the plan built for Under 11. Run uvicorn shield.server:app for a plan at your level with your name on it.</p>'}};
   const lb=$('#lieBtn');if(lb)lb.onclick=async()=>{const out=$('#lieOut');out.innerHTML='<p class="why">checking…</p>';try{const r=await fetch('/api/verify',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:$('#lieText').value})});const d=await r.json();const rep=d.report;
     out.innerHTML=`<div class="trace open">${rep.sentences.map(x=>`<div class="tstep"><div class="who"><span class="v ${x.ok?'':'no'}">${x.ok?'kept':'rejected'}</span></div><div><div class="txt ${x.ok?'':'bad'}">${x.text}</div>${x.problems.length?`<span class="what">${x.problems.join('; ')}</span>`:''}</div></div>`).join('')}<p class="why">Facts it can cite right now: ${d.facts.map(f=>`<code>${f.id}</code> ${f.text}`).slice(0,5).join(' · ')}</p></div>`}catch(e){out.innerHTML='<p class="why">No server here. Run uvicorn shield.server:app to try this.</p>'}};
 }

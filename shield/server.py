@@ -38,6 +38,8 @@ WEB = os.path.join(ROOT, "web")
 app = FastAPI(title="Shield match intelligence")
 _engine = Engine(load_match(MATCH))
 _workflow, _backend = build_workflow(MATCH, use_mcp_tool=False)
+from shield.agents.coach import build_coach_workflow  # noqa: E402
+_coach_wf, _ = build_coach_workflow()
 
 
 class StoryRequest(BaseModel):
@@ -63,6 +65,25 @@ def state(clock: float | None = None):
 def player(pid: str, clock: float | None = None):
     st = _engine.snapshot(clock)
     return st.fingerprints.get(pid) or {"error": "unknown player"}
+
+
+class PlanRequest(BaseModel):
+    player: str
+    age_band: str = "u11"
+    first_name: str = "you"
+
+
+@app.post("/api/plan")
+async def plan(req: PlanRequest):
+    """Coach agent: four-week plan from a player's playbook, checked by the Plan Verifier."""
+    from shield.agents.coach import AGE_BANDS, make_plan
+    if req.age_band not in AGE_BANDS:
+        return {"error": f"age_band must be one of {list(AGE_BANDS)}"}
+    pb = _engine.snapshot(None).playbook(req.player)
+    if "error" in pb:
+        return pb
+    p = await make_plan(pb, req.age_band, req.first_name or "you", workflow=_coach_wf)
+    return p.to_dict()
 
 
 class VerifyRequest(BaseModel):

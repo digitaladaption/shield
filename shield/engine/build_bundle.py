@@ -111,6 +111,11 @@ def main():
         cs = Engine(cd).snapshot()
         bundle["control"] = {"teams": cs.team_stats, "score": cs.score,
                              "note": "Same seed, Shield plant switched off. A true counterfactual at match level."}
+    from shield.agents.coach import build_coach_workflow, make_plan
+    cwf, _ = build_coach_workflow()
+    bundle["plans"] = {}
+    for pid in st.fingerprints:
+        bundle["plans"][pid] = asyncio.run(make_plan(bundle["playbooks"][pid], "u11", "you", workflow=cwf)).to_dict()
     players = [p for p in args.story_players.split(",") if p in st.fingerprints]
     bundle["stories"] = asyncio.run(stories_for(args.match, st, data, players))
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
