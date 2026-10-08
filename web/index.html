@@ -36,7 +36,8 @@
   .stage{position:relative;padding:12px 0 12px 16px}
   @media (max-width:900px){.stage{padding:12px 16px}}
   canvas{width:100%;display:block;border-radius:6px;background:var(--pitch)}
-  .caption{position:absolute;left:28px;top:24px;max-width:60%;background:rgba(21,27,36,.88);border-left:3px solid var(--amber);padding:8px 12px;font-family:"Barlow Condensed";font-size:20px;font-weight:600;letter-spacing:.2px;pointer-events:none;opacity:0;transition:opacity .25s}
+  .pitchwrap{position:relative}
+  .caption{position:absolute;left:12px;top:12px;max-width:60%;background:rgba(21,27,36,.88);border-left:3px solid var(--amber);padding:8px 12px;font-family:"Barlow Condensed";font-size:20px;font-weight:600;letter-spacing:.2px;pointer-events:none;opacity:0;transition:opacity .25s}
   .caption.show{opacity:1}
   .caption small{display:block;font-family:Barlow;font-weight:400;font-size:13px;color:var(--mute)}
   .scrub{width:100%;margin:8px 0 0}
@@ -95,8 +96,10 @@
   .cf{background:var(--bg2);border-radius:6px;padding:10px 12px;margin-top:8px;font-size:14px}
   .cf b.big{font-family:"Barlow Condensed";font-size:28px;font-weight:600;margin-right:6px}
   .loading{padding:40px;color:var(--mute)}
-  .vbox{position:absolute;left:28px;bottom:118px;max-width:44%;background:rgba(21,27,36,.9);border-left:3px solid #7bc9a0;padding:8px 12px;font-size:13px;pointer-events:none;opacity:0;transition:opacity .2s}
-  .vbox.show{opacity:1} .vbox.right{left:auto;right:12px} .vbox b{font-family:"Barlow Condensed";font-size:17px;font-weight:600;display:block;margin-bottom:2px} .vbox .opt{display:flex;gap:8px;color:var(--mute)} .vbox .opt i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-top:5px} .vbox .k{color:var(--ink)}
+  .vbox{position:absolute;left:12px;bottom:12px;max-width:44%;background:rgba(21,27,36,.9);border-left:3px solid #7bc9a0;padding:8px 12px;font-size:13px;pointer-events:none;opacity:0;transition:opacity .2s}
+  .vbox.show{opacity:1}
+  .tourcap{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:rgba(21,27,36,.95);border:1px solid var(--amber);border-radius:6px;padding:10px 16px;font-family:"Barlow Condensed";font-size:22px;font-weight:600;max-width:70%;text-align:center;z-index:9;opacity:0;transition:opacity .3s;pointer-events:none}
+  .tourcap.show{opacity:1} .tourcap small{display:block;font-family:Barlow;font-weight:400;font-size:13px;color:var(--mute)} .vbox.right{left:auto;right:12px} .vbox b{font-family:"Barlow Condensed";font-size:17px;font-weight:600;display:block;margin-bottom:2px} .vbox .opt{display:flex;gap:8px;color:var(--mute)} .vbox .opt i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-top:5px} .vbox .k{color:var(--ink)}
   canvas{cursor:crosshair}
   ol.looks{padding-left:20px;margin:4px 0} ol.looks li{margin:8px 0;display:grid;grid-template-columns:1fr 200px;gap:12px;align-items:center} ol.looks li canvas{width:200px;height:130px;border-radius:4px;background:var(--pitch)} @media (max-width:520px){ol.looks li{grid-template-columns:1fr} ol.looks li canvas{width:100%;height:auto}} ol.looks button{padding:0 6px;font-size:12px;border-color:transparent;color:var(--amber)}
   .points{display:grid;gap:6px;margin:6px 0} .point{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:start;border-top:1px solid var(--line);padding-top:6px;font-size:14px} .point .min{font-size:22px;font-weight:600;line-height:1} .point .row{margin:0}
@@ -118,6 +121,7 @@
     <button id="live" title="Hide anything the engine has not seen yet">Live</button>
     <button id="feed" title="Stream the match from the server as a live feed">Live feed</button>
     <button id="see" class="on" title="Click any player on the pitch to see what he sees">What he sees</button>
+    <button id="tour" title="A 90-second walkthrough the app drives itself">Tour</button>
     <span class="pill" id="feedStatus" hidden></span>
   </div>
   <nav class="tabs" aria-label="Viewing mode">
@@ -129,9 +133,12 @@
 </header>
 <main>
   <section class="stage">
+    <div class="pitchwrap">
     <canvas id="pitch" width="1050" height="680" aria-label="Pitch replay"></canvas>
     <div class="caption" id="caption"></div>
     <div class="vbox" id="vbox"></div>
+    </div>
+    <div class="tourcap" id="tourcap"></div>
     <input class="scrub" type="range" id="scrub" min="0" max="5399" value="0" aria-label="Match clock">
     <div class="timeline" id="timeline"></div>
     <div class="legend"><span><i style="background:var(--amber)"></i>goal</span><span><i style="background:var(--home);opacity:.7"></i>chance</span><span><i style="background:var(--ok)"></i>attack stopped</span><span><i style="border:2px solid var(--amber)"></i>key pass</span><span><i style="border:1px solid var(--mute)"></i>momentum / chaos</span></div>
@@ -161,6 +168,7 @@ function init(){
   $('#live').onclick=()=>{liveOnly=!liveOnly;$('#live').classList.toggle('on',liveOnly);lastTickSec=-1;renderPanel()};
   $('#scrub').oninput=e=>{clock=+e.target.value;freeze=null;renderPanel()};
   $('#feed').onclick=toggleFeed;
+  $('#tour').onclick=runTour;
   $('#see').onclick=()=>{visionOn=!visionOn;$('#see').classList.toggle('on',visionOn);if(visionOn&&!sel)sel=focus;if(!visionOn)$('#vbox').classList.remove('show')};
   $('#pitch').onclick=e=>{const r=$('#pitch').getBoundingClientRect();const px=(e.clientX-r.left)*PW/r.width,py=(e.clientY-r.top)*PH/r.height;const x=(px-PAD)/(PW-2*PAD)*L,y=(py-PAD)/(PH-2*PAD)*W;const row=frameAt(clock);let best=null,bd=2.6;for(const pid of B.frames.ids){const [qx,qy]=pos(row,pid);const d=Math.hypot(qx-x,qy-y);if(d<bd){best=pid;bd=d}}
     if(best){sel=best;visionOn=true;$('#see').classList.add('on');if(mode==='player'||mode==='kid'){if(B.fingerprints[best]){focus=best;renderPanel()}}}else{sel=null;$('#vbox').classList.remove('show')}};
@@ -219,7 +227,7 @@ function draw(){
   // freeze frame extras
   if(freeze) drawFreeze(row);
   // what he sees
-  if(sel&&visionOn){lastV=vision(clock,sel);drawVision(lastV,row);if(performance.now()-lastVboxAt>250){lastVboxAt=performance.now();updateVbox(lastV)}}
+  if(sel&&visionOn){lastV=vision(clock,sel);drawVision(lastV,row);if(performance.now()-lastVboxAt>250){lastVboxAt=performance.now();updateVbox(lastV)}}else if($('#vbox').classList.contains('show'))$('#vbox').classList.remove('show');
   // players
   for(const pid of B.frames.ids){const [x,y]=pos(row,pid);const p=B.meta.players.find(q=>q.id===pid);
     const isF=(mode==='player'||mode==='kid')&&pid===focus;
@@ -458,6 +466,33 @@ function miniPitch(canvas,d,pid){const g=canvas.getContext('2d');const MW=400,MH
 function planHtml(p){if(!p||!p.plan||!p.plan.weeks)return'';const pl=p.plan;
   return `<div class="plan">${pl.weeks.map(w=>`<div class="wk"><b class="cond">Week ${w.week}</b> <span class="why">${w.theme}</span>${w.sessions.map(s=>`<div class="sess"><span class="cond day">${s.day} · ${s.minutes} min</span><div>${s.drills.map(d=>`<span class="dr"><b>${d.name}</b> ${d.minutes}′ <span class="why">${d.coaching_point}</span></span>`).join('')}</div></div>`).join('')}</div>`).join('')}
   <p><b>Measure:</b> ${pl.measure}</p><p class="note" style="border:0;margin:0">${pl.note_to_player}</p><p class="why">${p.backend==='local'?'Local planner':'Coach agent on Microsoft Foundry'} · Plan Verifier: ${p.problems.length?p.problems.length+' problems listed':'every drill is from the library, every session fits the age'}${p.attempts>1?' · '+p.attempts+' drafts':''}</p></div>`}
+
+// ---------------- tour: the app drives itself through the story (for the video)
+let touring=false;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function setMode(m){mode=m;document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x.dataset.mode===m));renderPanel()}
+function say(t,sub=''){const c=$('#tourcap');c.innerHTML=`${t}${sub?`<small>${sub}</small>`:''}`;c.classList.add('show')}
+async function runTour(){if(touring){touring=false;$('#tourcap').classList.remove('show');$('#tour').classList.remove('on');return}
+  touring=true;$('#tour').classList.add('on');liveOnly=false;$('#live').classList.remove('on');lastTickSec=-1;
+  const shield=Object.values(B.fingerprints).find(f=>f.archetype==='Shield')?.player||'H06';
+  const best=B.threat_prevented.filter(r=>r.player===shield&&r.type==='interception').sort((a,b)=>b.danger_stopped-a.danger_stopped)[0];
+  const bm=B.moments.find(m=>m.evidence[0]===best.event_id);
+  const goal=B.moments.find(m=>m.kind==='goal');
+  const steps=[
+    async()=>{setMode('casual');sel=null;freeze=null;clock=goal?goal.t-10:1200;playing=true;speed=1;$('#play').textContent='Pause';say('Highlights show the goals.','Everyone sees this part.');await sleep(5000)},
+    async()=>{if(goal){jumpTo(goal)}say(`${goal?name(goal.player):'A striker'} scores. ${B.score.home}-${B.score.away}.`,'The replays will show this ten times.');await sleep(4000)},
+    async()=>{playing=false;$('#play').textContent='Play';clock=best.t-12;freeze=null;sel=null;playing=true;speed=1;$('#play').textContent='Pause';say('Nobody will show this part.','Watch number 6.');await sleep(5500)},
+    async()=>{playing=false;$('#play').textContent='Play';clock=best.t-1.5;sel=shield;visionOn=true;$('#see').classList.add('on');say(`${name(shield)} is closing the two most dangerous lanes.`,'What he sees: computed from positions, not drawn by hand.');await sleep(5500)},
+    async()=>{const row=frameAt(clock);sel=carrierAt(row,possTeamAt(clock));say('The man on the ball has three options. All blocked.','He tries one anyway.');await sleep(5000)},
+    async()=>{sel=null;jumpTo(bm,true);showCounterfactual(bm);say('Without him, the pass arrives.',`${$('#panel .cf b.big')?.textContent||''} of attacks that got this far ended in a shot. From this match, not a script.`);await sleep(6500)},
+    async()=>{setMode('analyst');say('Every sentence is checked against the data.','A Narrator writes, a Verifier rejects anything the facts do not support, a Personalizer adapts it for you.');await sleep(5000)},
+    async()=>{setMode('kid');focus=shield;renderPanel();say('For a kid who wants to play like him: what it looks like, from the data.','Play like your idol.');await sleep(6000)},
+    async()=>{window.scrollTo({top:document.body.scrollHeight*0.45,behavior:'smooth'});say('His game today, in clickable moments. Then a plan to train like him.','Drills a Coach agent cannot invent: a verifier checks every one.');await sleep(6000)},
+    async()=>{window.scrollTo({top:0,behavior:'smooth'});say('Shield. The work the highlights miss, made visible, verified, and taught.','Synthetic data. Microsoft Foundry, Agent Framework, MCP.');await sleep(6000)},
+  ];
+  for(const st of steps){if(!touring)break;await st()}
+  touring=false;$('#tourcap').classList.remove('show');$('#tour').classList.remove('on');playing=false;$('#play').textContent='Play';}
+
 function pretty(k){return k.replace('_p90',' per 90').replace(/_/g,' ')}
 function fmtv(k,v){if(k==='possession'||k==='pass_accuracy')return Math.round(v*100)+'%';return typeof v==='number'?(Number.isInteger(v)?v:v.toFixed(2)):v}
 function wirePanel(){

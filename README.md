@@ -27,6 +27,18 @@ synthetic events ──> stats engine ──> fact packet ──> Narrator ─�
 
 The hackathon rules require synthetic data and no real Premier League feed is used. The point of the live path is that the pipeline is event-driven and fast enough to sit on a real feed; swapping the source is an adapter, not a redesign.
 
+### What he sees
+
+Click any player at any moment. For the man on the ball: every passing lane, open, contested or blocked, with the difficulty and the danger it would create, and the best option. For a defender: the lanes he is closing, whether he is between the ball and his goal, his tackle range, who he is marking. Computed with the same geometry the simulator used to play the match (`shield/engine/vision.py`, mirrored in the page), so it is the truth of the match, not an illustration. Also an MCP tool (`what_he_sees`) and `GET /api/see/{player}?clock=`.
+
+### Agents you can watch
+
+Every story carries its trace: each Narrator draft, each Verifier verdict with the sentences it struck out and why, the Personalizer rewrite, the final check, with timings. "How the agents wrote it" under any story. The Analyst tab has a "Try to make it lie" box that runs any sentence through the same Verifier.
+
+### Coach agent
+
+A fourth agent, in its own Agent Framework workflow (`shield/agents/coach.py`): it turns a playbook into a four-week plan for a player's age band. Its Plan Verifier rejects any drill not in the drill library, any session over the age's limit, and sends the plan back with the reasons. `POST /api/plan`.
+
 ### Threat prevented
 
 For every interception, tackle or block, the player is credited with the danger the attack was heading towards when he stopped it. Goals and assists record what happened; this records what didn't. In the demo match, the Shield ends 20 opposition attacks. In a control run of the same seed with him switched off, the opposition's shots go from 12 to 17 and their xG from 0.9 to 1.74.
@@ -58,8 +70,8 @@ Enter a kid's simple match stats and it finds the archetype whose *shape* they r
 
 | Where | What |
 |---|---|
-| Narrator, Personalizer | **Microsoft Agent Framework** `Agent` on a **Microsoft Foundry** model (`FoundryChatClient`), Azure OpenAI also supported |
-| Orchestration | Agent Framework `WorkflowBuilder` with a conditional reject-and-rewrite loop |
+| Narrator, Personalizer, Coach | **Microsoft Agent Framework** `Agent` on a **Microsoft Foundry** model (`FoundryChatClient`), Azure OpenAI also supported |
+| Orchestration | two Agent Framework `WorkflowBuilder` graphs, each with a conditional reject-and-rewrite loop and a code verifier |
 | Tools | The stats engine is an **MCP server** (`shield/mcp_server`); the Narrator mounts it with `MCPStdioTool` for drill-downs |
 | Hosting | FastAPI app in a container for **Azure Container Apps** |
 | Build | GitHub Copilot used during development |
@@ -96,7 +108,9 @@ Live feed from the command line:
 curl -N "localhost:8080/api/stream?speed=50&narrate=true"
 ```
 
-Tests (engine, live tracker, verifier, and the workflow loop with a fake model):
+Press **Tour** in the app for a 90-second walkthrough the app drives itself; record the screen and that is the demo video.
+
+Tests (engine, live tracker, vision, verifier, both workflow loops with a fake model):
 
 ```bash
 pytest
@@ -122,6 +136,9 @@ shield/engine/build_bundle.py  precomputes everything the demo needs
 shield/mcp_server/server.py    the engine as MCP tools
 shield/agents/verifier.py      deterministic verifier
 shield/agents/pipeline.py      Narrator -> Verifier -> Personalizer workflow (Agent Framework)
+shield/agents/coach.py         Coach -> Plan Verifier workflow
+shield/engine/vision.py        what he sees: lanes, wedge, range
+shield/engine/playbook.py      play-like-your-idol playbook
 shield/server.py               FastAPI: demo + JSON API
 web/index.html                 the demo (vanilla JS, canvas)
 tests/                         engine, verifier and workflow tests
