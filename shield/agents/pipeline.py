@@ -26,6 +26,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 from dataclasses import dataclass, field
 
 from agent_framework import Agent, Executor, WorkflowBuilder, WorkflowContext, handler
@@ -60,6 +61,10 @@ class NarrateRequest:
     roster: list[str]
     feedback: str | None = None
     attempt: int = 0
+    trace: list = field(default_factory=list)
+
+    def step(self, agent: str, what: str, t0: float, **kw):
+        self.trace.append({"agent": agent, "step": what, "ms": round((time.perf_counter() - t0) * 1000, 1), **kw})
 
 
 @dataclass
@@ -96,6 +101,7 @@ class Story:
     attempts: int
     backend: str
     facts_used: list[dict] = field(default_factory=list)
+    trace: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return self.__dict__
@@ -214,6 +220,7 @@ class NarratorExecutor(Executor):
 
     @handler
     async def narrate(self, req: NarrateRequest, ctx: WorkflowContext[Draft]) -> None:
+        t0 = time.perf_counter()
         if self.agent is None:
             text = local_narrate(req)
         else:
@@ -224,6 +231,8 @@ class NarratorExecutor(Executor):
                 prompt += f"\nYOUR PREVIOUS DRAFT WAS REJECTED BY THE VERIFIER. Fix these and rewrite:\n{req.feedback}\n"
             resp = await self.agent.run(prompt)
             text = resp.text
+        req.step("Narrator", f"draft {req.attempt + 1}" + (" after feedback" if req.feedback else ""), t0,
+                 text=text, backend=self.backend, feedback=req.feedback)
         await ctx.send_message(Draft(text=text, req=req, stage="narration"))
 
     @handler
@@ -241,7 +250,11 @@ class VerifierExecutor(Executor):
 
     @handler
     async def check(self, draft: Draft, ctx: WorkflowContext[Verified | Rejected]) -> None:
+        t0 = time.perf_counter()
         rep = verify(draft.text, draft.req.packet["facts"], draft.req.roster)
+        verdict = "accepted" if rep.ok else ("accepted with cuts" if (draft.req.attempt >= self.max_attempts or draft.stage == "personalized") else "rejected, sent back")
+        draft.req.step("Verifier", f"check {draft.stage}", t0, verdict=verdict, kept=sum(1 for x in rep.sentences if x.ok),
+                       rejected=rep.rejected, problems=[{"text": x.text, "problems": x.problems} for x in rep.sentences if not x.ok])
         if rep.ok or draft.req.attempt >= self.max_attempts or draft.stage == "personalized":
             await ctx.send_message(Verified(text_with_cites=draft.text, clean_text=rep.clean_text, report=rep,
                                             req=draft.req, stage=draft.stage))
@@ -258,11 +271,16 @@ class PersonalizerExecutor(Executor):
     async def personalize(self, v: Verified, ctx: WorkflowContext[Draft]) -> None:
         req = v.req
         text = v.text_with_cites
+        t0 = time.perf_counter()
+        ran = False
         if self.agent is not None and (req.language != "en" or req.mode in ("casual", "kid")):
+            ran = True
             prompt = (f"AUDIENCE MODE: {MODES[req.mode]}\nLANGUAGE: {LANG_NAMES.get(req.language, req.language)}\n"
                       f"PLAYER FOCUS: {req.player_focus or 'none'}\n\nTEXT:\n{text}")
             resp = await self.agent.run(prompt)
             text = resp.text
+        req.step("Personalizer", f"rewrite for {req.mode} in {LANG_NAMES.get(req.language, req.language)}" if ran else "no rewrite needed (English, no model)",
+                 t0, text=text if ran else None, ran=ran)
         await ctx.send_message(Draft(text=text, req=req, stage="personalized"))
 
 
@@ -273,7 +291,11 @@ class FinalCheckExecutor(Executor):
 
     @handler
     async def finish(self, draft: Draft, ctx: WorkflowContext[None, Story]) -> None:
+        t0 = time.perf_counter()
         rep = verify(draft.text, draft.req.packet["facts"], draft.req.roster)
+        draft.req.step("Final check", "verify personalized text", t0, verdict="accepted" if rep.ok else "cuts applied",
+                       kept=sum(1 for x in rep.sentences if x.ok), rejected=rep.rejected,
+                       problems=[{"text": x.text, "problems": x.problems} for x in rep.sentences if not x.ok])
         eng = self.english.get("text", "")
         # if personalization broke verification, fall back to the verified English
         text = rep.clean_text if rep.ok else (self.english.get("clean", eng) if draft.req.language == "en" else rep.clean_text or eng)
@@ -283,7 +305,8 @@ class FinalCheckExecutor(Executor):
                                      player_focus=draft.req.player_focus, text=text,
                                      english_text=self.english.get("clean", ""), cited_text=draft.text,
                                      verification=rep.to_dict(), attempts=draft.req.attempt + 1,
-                                     backend=self.english.get("backend", "local"), facts_used=facts_used))
+                                     backend=self.english.get("backend", "local"), facts_used=facts_used,
+                                     trace=draft.req.trace))
 
 
 class EnglishStoreExecutor(Executor):

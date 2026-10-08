@@ -59,6 +59,8 @@
   .story p{margin:0 0 10px}
   .why{font-size:13px;color:var(--mute)}
   .facts{font-size:13px;border-top:1px solid var(--line);margin-top:8px;padding-top:6px;display:none}
+  .trace{display:none;border-top:1px solid var(--line);margin-top:8px;padding-top:6px;font-size:13px} .trace.open{display:block}
+  .tstep{display:grid;grid-template-columns:96px 1fr;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)} .tstep .who{font-family:"Barlow Condensed";font-weight:600;font-size:15px} .tstep .who small{display:block;font-family:Barlow;font-weight:400;font-size:11px;color:var(--mute)} .tstep .what{color:var(--mute)} .tstep .txt{color:var(--ink);margin-top:3px;font-size:12.5px;line-height:1.4} .tstep .bad{color:var(--danger);text-decoration:line-through} .tstep .v{color:var(--ok)} .tstep .v.no{color:var(--danger)}
   .facts.open{display:block}
   .facts div{padding:3px 0;display:flex;gap:8px}
   .facts code{color:var(--amber);font-family:"Barlow Condensed";font-size:14px;min-width:28px}
@@ -280,7 +282,8 @@ function jumpTo(m,ghost=false){playing=false;$('#play').textContent='Play';clock
 // ---------------- panel
 function storyFor(md,pid){const it=B.stories.items;return it[`${md}|${lang}|${pid||''}`]||it[`${md}|en|${pid||''}`]||null}
 function factsHtml(story){if(!story)return'';const used=story.facts_used||[];
-  return `<button class="why" data-toggle="facts">Why? Show the ${used.length} facts behind this</button><div class="facts">${used.map(f=>`<div><code>${f.id}</code><span>${f.text}</span>${f.evidence.length?`<button data-ev="${f.evidence[0]}">see ${f.evidence[0]}</button>`:''}</div>`).join('')}</div>`}
+  return `<button class="why" data-toggle="facts">Why? Show the ${used.length} facts behind this</button> <button class="why" data-toggle="trace">How the agents wrote it</button><div class="facts">${used.map(f=>`<div><code>${f.id}</code><span>${f.text}</span>${f.evidence.length?`<button data-ev="${f.evidence[0]}">see ${f.evidence[0]}</button>`:''}</div>`).join('')}</div>${traceHtml(story)}`}
+function traceHtml(s){if(!s.trace||!s.trace.length)return'';return `<div class="trace">${s.trace.map(t=>{let body='';if(t.agent==='Verifier'||t.agent==='Final check'){body=`<span class="v ${t.verdict.startsWith('accepted')?'':'no'}">${t.verdict}</span> · ${t.kept} kept, ${t.rejected} rejected`+(t.problems&&t.problems.length?`<div class="txt">${t.problems.map(p=>`<span class="bad">${p.text}</span> <span class="what">${p.problems.join('; ')}</span>`).join('<br>')}</div>`:'')}else if(t.text){body=`<div class="txt">${t.text.replace(/\[f\d+(?:,\s*f\d+)*\]/g,m=>`<span class="what">${m}</span>`)}</div>`}else body=`<span class="what">${t.step}</span>`;return `<div class="tstep"><div class="who">${t.agent}<small>${t.step} · ${t.ms} ms${t.backend?' · '+t.backend:''}</small></div><div>${body}</div></div>`}).join('')}</div>`}
 function storyBlock(md,pid){const s=storyFor(md,pid);if(!s)return'<p class="why">No story for this view yet.</p>';
   const t=s.text.split(/(?<=\.)\s+/).map(x=>`<p>${x}</p>`).join('');
   const ft=(liveOnly&&clock<B.clock-1)?'<span class="pill">full-time story</span>':'';
@@ -311,7 +314,8 @@ function renderPanel(){
     h+=`<h3>Threat prevented, top five</h3><table><tr><th>Player</th><th class="n">Danger stopped</th><th class="n">Attacks ended</th><th class="n">xG prevented</th></tr>`;
     const tp=Object.entries(B.players).filter(([id,p])=>p.role!=='GK').sort((a,b)=>b[1].threat_prevented-a[1].threat_prevented).slice(0,5);
     for(const [id,p] of tp){const ended=B.possessions.filter(q=>q.ended_by===id).length;h+=`<tr><td>${p.name}<span class="pill">${B.fingerprints[id]?.archetype_label||''}</span></td><td class="n">${p.threat_prevented.toFixed(2)}</td><td class="n">${ended}</td><td class="n">${p.xg_prevented.toFixed(2)}</td></tr>`}
-    h+=`</table><h3>Pass quality, top five by difficulty <span class="pill">25+ passes</span></h3><table><tr><th>Player</th><th class="n">Passes</th><th class="n">Accuracy</th><th class="n">Avg difficulty</th><th class="n">Forward</th></tr>`;
+    h+=`</table><h3>Try to make it lie <span class="pill">needs the server</span></h3><p class="why">Type a sentence about this match, citing a fact id like [f3]. The same Verifier the Narrator faces will check every number and name in it.</p><div class="row"><input id="lieText" style="flex:1;min-width:220px" value="Dario Okonkwo-Hale made 40 interceptions and Bianchi scored twice [f3]."><button id="lieBtn">Check it</button></div><div id="lieOut"></div>`;
+    h+=`<h3>Pass quality, top five by difficulty <span class="pill">25+ passes</span></h3><table><tr><th>Player</th><th class="n">Passes</th><th class="n">Accuracy</th><th class="n">Avg difficulty</th><th class="n">Forward</th></tr>`;
     const pq=Object.entries(B.players).filter(([id,p])=>p.passes>=25).sort((a,b)=>b[1].pass_difficulty_avg-a[1].pass_difficulty_avg).slice(0,5);
     for(const [id,p] of pq)h+=`<tr><td>${p.name}</td><td class="n">${p.passes}</td><td class="n">${Math.round(100*p.passes_complete/p.passes)}%</td><td class="n">${p.pass_difficulty_avg}</td><td class="n">${p.progressive_passes}</td></tr>`;
     h+=`</table><h3>Momentum, 5-minute windows <span class="pill">control vs chaos</span></h3>`;
@@ -432,7 +436,7 @@ function pretty(k){return k.replace('_p90',' per 90').replace(/_/g,' ')}
 function fmtv(k,v){if(k==='possession'||k==='pass_accuracy')return Math.round(v*100)+'%';return typeof v==='number'?(Number.isInteger(v)?v:v.toFixed(2)):v}
 function wirePanel(){
   const P=$('#panel');
-  P.querySelectorAll('[data-toggle=facts]').forEach(b=>b.onclick=()=>b.nextElementSibling.classList.toggle('open'));
+  P.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=()=>{const box=b.parentElement.querySelector('.'+b.dataset.toggle);if(box)box.classList.toggle('open')});
   P.querySelectorAll('[data-ev]').forEach(b=>b.onclick=()=>{const e=B.events.find(x=>x.id===b.dataset.ev);if(e){playing=false;$('#play').textContent='Play';clock=Math.max(0,e.t-3);freeze=null}});
   P.querySelectorAll('[data-jump]').forEach(b=>b.onclick=()=>jumpTo(B.moments.find(m=>m.rank==+b.dataset.jump)));
   P.querySelectorAll('[data-ghost]').forEach(b=>b.onclick=()=>{const m=B.moments.find(x=>x.rank==+b.dataset.ghost);jumpTo(m,true);showCounterfactual(m)});
@@ -441,6 +445,8 @@ function wirePanel(){
   const l=$('#lang');if(l)l.onchange=()=>{lang=l.value;renderPanel()};
   const c=$('#club');if(c)c.onchange=()=>{club=c.value;renderPanel()};
   const ms=$('#matchStyle');if(ms)ms.onclick=matchStyle;
+  const lb=$('#lieBtn');if(lb)lb.onclick=async()=>{const out=$('#lieOut');out.innerHTML='<p class="why">checking…</p>';try{const r=await fetch('/api/verify',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:$('#lieText').value})});const d=await r.json();const rep=d.report;
+    out.innerHTML=`<div class="trace open">${rep.sentences.map(x=>`<div class="tstep"><div class="who"><span class="v ${x.ok?'':'no'}">${x.ok?'kept':'rejected'}</span></div><div><div class="txt ${x.ok?'':'bad'}">${x.text}</div>${x.problems.length?`<span class="what">${x.problems.join('; ')}</span>`:''}</div></div>`).join('')}<p class="why">Facts it can cite right now: ${d.facts.map(f=>`<code>${f.id}</code> ${f.text}`).slice(0,5).join(' · ')}</p></div>`}catch(e){out.innerHTML='<p class="why">No server here. Run uvicorn shield.server:app to try this.</p>'}};
 }
 function showCounterfactual(m){
   const ev=B.events.find(e=>e.id===m.evidence[0]); const d=m.detail.danger_stopped;

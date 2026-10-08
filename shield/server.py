@@ -65,6 +65,22 @@ def player(pid: str, clock: float | None = None):
     return st.fingerprints.get(pid) or {"error": "unknown player"}
 
 
+class VerifyRequest(BaseModel):
+    text: str
+    player: str | None = None
+
+
+@app.post("/api/verify")
+def verify_text(req: VerifyRequest):
+    """Try to make it lie: run any text through the same Verifier the agents face."""
+    from shield.agents.verifier import verify
+    st = _engine.snapshot(None)
+    pk = st.fact_packet(player_focus=req.player)
+    roster = [p["name"] for p in _engine.data.meta["players"]]
+    rep = verify(req.text, pk["facts"], roster)
+    return {"report": rep.to_dict(), "facts": pk["facts"][:12]}
+
+
 @app.get("/api/see/{pid}")
 def see(pid: str, clock: float):
     return _engine.snapshot(None).see(clock, pid)

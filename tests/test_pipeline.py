@@ -67,6 +67,10 @@ def test_reject_then_rewrite(packet):
     assert "hat-trick" not in story.text
     assert story.verification["ok"]
     assert "REJECTED BY THE VERIFIER" in client.prompts[1]
+    agents = [t["agent"] for t in story.trace]
+    assert agents[:4] == ["Narrator", "Verifier", "Narrator", "Verifier"]
+    assert story.trace[1]["verdict"] == "rejected, sent back"
+    assert story.trace[1]["problems"] and "99" in story.trace[1]["problems"][0]["text"]
 
 
 def test_personalizer_cannot_add_facts(packet):
