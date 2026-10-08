@@ -28,7 +28,8 @@
   .clock{font-family:"Barlow Condensed";font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;min-width:74px}
   .transport{display:flex;gap:6px;align-items:center}
   .tabs{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap}
-  .tabs button{border-color:transparent;color:var(--mute);padding:6px 10px}
+  .tabs button{border-color:transparent;color:var(--mute);padding:6px 8px}
+  #feedStatus{font-variant-numeric:tabular-nums;white-space:nowrap}
   .tabs button.on{background:none;color:var(--ink);border-bottom:2px solid var(--amber);border-radius:0}
   main{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(320px,.9fr);gap:0}
   @media (max-width:900px){main{grid-template-columns:1fr}}
@@ -104,6 +105,8 @@
     <button id="play" aria-label="Play or pause">Play</button>
     <button id="spd1" class="on">1×</button><button id="spd4">4×</button><button id="spd16">16×</button>
     <button id="live" title="Hide anything the engine has not seen yet">Live</button>
+    <button id="feed" title="Stream the match from the server as a live feed">Live feed</button>
+    <span class="pill" id="feedStatus" hidden></span>
   </div>
   <nav class="tabs" aria-label="Viewing mode">
     <button data-mode="casual" class="on">Fan</button>
@@ -126,6 +129,7 @@
 const $=s=>document.querySelector(s);
 let B=null, clock=0, playing=false, speed=1, mode='casual', focus='H06', lang='en', liveOnly=true, lastTs=0;
 let freeze=null; // {moment, ghost:0..1 or null}
+let feed=null, feedItem=null, feedStats={engine:null,narr:null,n:0};
 const fmt=t=>`${String(Math.floor(t/60)).padStart(2,'0')}:${String(Math.floor(t%60)).padStart(2,'0')}`;
 const name=pid=>B.meta.players.find(p=>p.id===pid)?.name||pid;
 const short=pid=>{const n=name(pid).split(' ');return n[n.length-1]};
@@ -142,13 +146,14 @@ function init(){
   $('#live').classList.toggle('on',liveOnly);
   $('#live').onclick=()=>{liveOnly=!liveOnly;$('#live').classList.toggle('on',liveOnly);lastTickSec=-1;renderPanel()};
   $('#scrub').oninput=e=>{clock=+e.target.value;freeze=null;renderPanel()};
+  $('#feed').onclick=toggleFeed;
   document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{mode=b.dataset.mode;document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));renderPanel()});
   renderPanel();
   requestAnimationFrame(loop);
 }
 
 function loop(ts){
-  if(playing){const dt=(ts-lastTs)/1000*speed;clock=Math.min(B.clock,clock+dt);if(clock>=B.clock){playing=false;$('#play').textContent='Play'}}
+  if(playing&&!feed){const dt=(ts-lastTs)/1000*speed;clock=Math.min(B.clock,clock+dt);if(clock>=B.clock){playing=false;$('#play').textContent='Play'}}
   lastTs=ts;
   if(freeze&&freeze.ghost!==null&&freeze.ghost<1){freeze.ghost=Math.min(1,freeze.ghost+0.012)}
   draw();
@@ -208,8 +213,11 @@ function draw(){
   // ball
   C.beginPath();C.arc(sx(row[1]),sy(row[2]),6,0,7);C.fillStyle='#fff';C.fill();C.strokeStyle='#222';C.lineWidth=1.5;C.stroke();
   // caption
+  const cap=$('#caption');
+  if(feed){const it=feedItem&&feedItem.t_start<=clock&&clock<=feedItem.t_end?feedItem:null;
+    if(it){cap.innerHTML=`${it.caption||it.text.en}<small>${it.kind.replace('_',' ')} · engine ${it.engine_latency_ms} ms${it.narration_latency_ms!=null?` · caption ${it.narration_latency_ms} ms (${it.caption_backend||'local'})`:''} · evidence ${it.evidence.slice(0,2).join(', ')}</small>`;cap.classList.add('show')}else cap.classList.remove('show');return}
   const item=B.overlay.find(o=>o.t_start<=clock&&clock<=o.t_end&&(!liveOnly||o.t_start<=clock));
-  const cap=$('#caption'); if(item){cap.innerHTML=`${item.text.en}<small>${item.kind.replace('_',' ')} · rank ${item.rank} · evidence ${item.evidence.slice(0,2).join(', ')}</small>`;cap.classList.add('show')}else cap.classList.remove('show');
+  if(item){cap.innerHTML=`${item.text.en}<small>${item.kind.replace('_',' ')} · rank ${item.rank} · evidence ${item.evidence.slice(0,2).join(', ')}</small>`;cap.classList.add('show')}else cap.classList.remove('show');
 }
 function drawFreeze(row){
   const m=freeze.moment; if(m.kind!=='stop')return;
@@ -307,6 +315,21 @@ function renderPanel(){
     h+=`</div><button id="matchStyle">Find my style</button><div id="styleOut"></div>`;
   }
   P.innerHTML=h; wirePanel();
+}
+function toggleFeed(){
+  if(feed){feed.close();feed=null;feedItem=null;$('#feed').classList.remove('on');$('#feedStatus').hidden=true;return}
+  playing=false;$('#play').textContent='Play';freeze=null;
+  const url=`/api/stream?speed=${speed}&start=${Math.floor(clock)}&narrate=true`;
+  feed=new EventSource(url);feedStats={engine:null,narr:null,n:0};
+  $('#feed').classList.add('on');const st=$('#feedStatus');st.hidden=false;st.textContent='connecting…';
+  feed.addEventListener('hello',e=>{const d=JSON.parse(e.data);st.textContent=`${d.speed}× · ${d.events} events`});
+  feed.addEventListener('match',e=>{const d=JSON.parse(e.data);clock=d.event.t;});
+  feed.addEventListener('overlay',e=>{const d=JSON.parse(e.data);feedItem=d;feedStats.n++;feedStats.engine=d.engine_latency_ms;feedStats.narr=d.narration_latency_ms;
+    st.textContent=`${speed}× · engine ${d.engine_latency_ms} ms${d.narration_latency_ms!=null?` · caption ${Math.round(d.narration_latency_ms)} ms`:''}`;
+    if(!B.moments.some(m=>m.evidence[0]===d.evidence[0])){B.moments.push({kind:d.kind,t:d.t_start,minute:Math.floor(d.t_start/60),team:d.team,player:d.player,score:0,evidence:d.evidence,detail:d.detail,x:d.x,y:d.y,rank:B.moments.length+1});buildTimeline();lastTickSec=-1}
+    if(mode==='player'||mode==='analyst')renderPanel()});
+  feed.addEventListener('end',()=>{st.textContent='feed ended · full time';feed.close();feed=null;});
+  feed.onerror=()=>{st.textContent='feed unavailable: run the server (uvicorn shield.server:app), the static page has no stream'};
 }
 function pretty(k){return k.replace('_p90',' per 90').replace(/_/g,' ')}
 function fmtv(k,v){if(k==='possession'||k==='pass_accuracy')return Math.round(v*100)+'%';return typeof v==='number'?(Number.isInteger(v)?v:v.toFixed(2)):v}

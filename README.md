@@ -21,6 +21,12 @@ synthetic events ──> stats engine ──> fact packet ──> Narrator ─�
 4. **Render.** Timed, machine-readable overlay items, plus a 2D pitch replay with a freeze-frame of each stop and an empirical "without him" counterfactual built from the match's own possessions.
 5. **Personalize.** Fan, Analyst, Player focus and Play-like-your-idol modes, any language, same verified facts.
 
+### Real time
+
+`GET /api/stream?speed=4&narrate=true` replays the synthetic match as a server-sent event feed at any multiple of real time. An incremental tracker processes each event as it arrives and pushes key moments with its own measured latency (well under a millisecond for the engine; the verified caption adds tens of milliseconds through the local narrator, or a model round-trip through Foundry). The demo's **Live feed** button connects to it. Nothing in the live path knows what happens next.
+
+The hackathon rules require synthetic data and no real Premier League feed is used. The point of the live path is that the pipeline is event-driven and fast enough to sit on a real feed; swapping the source is an adapter, not a redesign.
+
 ### Threat prevented
 
 For every interception, tackle or block, the player is credited with the danger the attack was heading towards when he stopped it. Goals and assists record what happened; this records what didn't. In the demo match, the Shield ends 20 opposition attacks. In a control run of the same seed with him switched off, the opposition's shots go from 12 to 17 and their xG from 0.9 to 1.74.
@@ -65,7 +71,13 @@ MCP server on its own (stdio, or `--http` for streamable HTTP on :8000):
 python -m shield.mcp_server.server --match data/match_7
 ```
 
-Tests (engine, verifier, and the workflow loop with a fake model):
+Live feed from the command line:
+
+```bash
+curl -N "localhost:8080/api/stream?speed=50&narrate=true"
+```
+
+Tests (engine, live tracker, verifier, and the workflow loop with a fake model):
 
 ```bash
 pytest
@@ -86,6 +98,7 @@ az containerapp up --name shield --resource-group shield-rg --source . --ingress
 ```
 shield/generator/generate.py   synthetic match generator (planted Shield, control flag, --compare)
 shield/engine/analysis.py      deterministic stats engine: danger, threat prevented, fingerprints, facts
+shield/engine/live.py          incremental tracker for the live feed
 shield/engine/build_bundle.py  precomputes everything the demo needs
 shield/mcp_server/server.py    the engine as MCP tools
 shield/agents/verifier.py      deterministic verifier

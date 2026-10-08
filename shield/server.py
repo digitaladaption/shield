@@ -16,15 +16,19 @@ Endpoints
 """
 from __future__ import annotations
 
+import asyncio
+import json
 import os
+import time
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from shield.agents.pipeline import MODES, build_workflow, tell_story
 from shield.engine.analysis import Engine
+from shield.engine.live import LiveTracker
 from shield.engine.match import load_match
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -77,6 +81,48 @@ async def story(req: StoryRequest):
         return {"error": f"mode must be one of {list(MODES)}"}
     s = await tell_story(MATCH, req.mode, req.language, req.player, req.clock, workflow=_workflow)
     return s.to_dict()
+
+
+@app.get("/api/stream")
+async def stream(speed: float = 4.0, start: float = 0.0, narrate: bool = False):
+    """Server-sent events. Replays the synthetic match as a live feed at `speed` x real time.
+    Each event is pushed with its wall-clock send time; key moments are pushed as `overlay`
+    messages with the engine's own processing latency. With narrate=true, a one-line
+    caption also goes through the Narrator -> Verifier workflow and its latency is reported."""
+    data = _engine.data
+    xg_curve = _engine.snapshot(None).xg_curve_table
+    tracker = LiveTracker(data.clubs, data.players, xg_curve)
+    events = [e for e in data.events if e["t"] >= start]
+
+    async def gen():
+        yield f"event: hello\ndata: {json.dumps({'speed': speed, 'start': start, 'events': len(events)})}\n\n"
+        wall0 = time.perf_counter()
+        t0 = events[0]["t"] if events else 0.0
+        for e in events:
+            due = wall0 + (e["t"] - t0) / speed
+            delay = due - time.perf_counter()
+            if delay > 0:
+                await asyncio.sleep(delay)
+            sent_ms = time.time() * 1000
+            yield f"event: match\ndata: {json.dumps({'event': e, 'sent_ms': sent_ms})}\n\n"
+            item = tracker.ingest(e)
+            if item:
+                if narrate:
+                    n0 = time.perf_counter()
+                    try:
+                        s = await tell_story(MATCH, "overlay", "en", item["player"], e["t"], workflow=_workflow)
+                        item["caption"] = s.text
+                        item["caption_backend"] = s.backend
+                    except Exception as ex:  # keep the feed alive
+                        item["caption_error"] = str(ex)[:120]
+                    item["narration_latency_ms"] = round((time.perf_counter() - n0) * 1000, 1)
+                item["sent_ms"] = time.time() * 1000
+                item["state"] = tracker.state()
+                yield f"event: overlay\ndata: {json.dumps(item)}\n\n"
+        yield f"event: end\ndata: {json.dumps(tracker.state())}\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/")
