@@ -77,40 +77,44 @@ def build_playbook(st, pid: str) -> dict:
 
     thinking = []
 
-    def add(text, evidence=(), value=None, tag=None):
-        looks.append({"text": text, "evidence": list(evidence)[:10], "value": value, "tag": tag})
+    def add(text, evidence=(), value=None, tag=None, diagram=None):
+        looks.append({"text": text, "evidence": list(evidence)[:10], "value": value, "tag": tag, "diagram": diagram})
 
-    def think(text, evidence=(), value=None):
-        thinking.append({"text": text, "evidence": list(evidence)[:10], "value": value, "tag": "thinking"})
+    def think(text, evidence=(), value=None, diagram=None):
+        thinking.append({"text": text, "evidence": list(evidence)[:10], "value": value, "tag": "thinking", "diagram": diagram})
+
+    def dg(kind, ids=None, **kw):
+        return {"kind": kind, "ids": list(ids or [])[:40], **kw}
 
     # archetype-specific first, so the top of the list is the point
     if arche == "Shield" or m["screening"] >= 0.3:
         add(f"He stays between the ball and his own goal. Today that was {_pct(m['screening'])} of the time the other team had it.",
-            value=m["screening"], tag="Shield")
+            value=m["screening"], tag="Shield", diagram=dg("heat_defending", screen=True))
     if s["interceptions"] >= 3:
-        add(f"He reads passes before they happen and steps in: {s['interceptions']} cut out today.", ev["interceptions"], s["interceptions"], tag="Shield")
+        add(f"He reads passes before they happen and steps in: {s['interceptions']} cut out today.", ev["interceptions"], s["interceptions"], tag="Shield", diagram=dg("intercepts", ev["interceptions"]))
     n_ended = sum(1 for p in st.possessions if p.ended_by == pid)
     if n_ended >= 5:
         add(f"He ended {n_ended} of the other team's attacks before they got to the box.",
-            [p.end_event_id for p in st.possessions if p.ended_by == pid], n_ended, tag="Shield")
+            [p.end_event_id for p in st.possessions if p.ended_by == pid], n_ended, tag="Shield",
+            diagram=dg("dots", [p.end_event_id for p in st.possessions if p.ended_by == pid]))
     if arche in ("Metronome",) or (s["passes"] >= 50 and m["pass_accuracy"] >= 0.88):
-        add(f"He keeps the ball moving: {s['passes']} passes, {_pct(m['pass_accuracy'])} found a teammate.", ev["progressive_passes"], s["passes"], tag="Metronome")
+        add(f"He keeps the ball moving: {s['passes']} passes, {_pct(m['pass_accuracy'])} found a teammate.", ev["progressive_passes"], s["passes"], tag="Metronome", diagram=dg("arrows", ev["progressive_passes"]))
     if arche in ("Creator",) or s["danger_created"] >= 1.5:
         add(f"He makes things happen with his passing: {s['progressive_passes']} passes that moved the team forward today.",
-            ev["progressive_passes"], s["progressive_passes"], tag="Creator")
+            ev["progressive_passes"], s["progressive_passes"], tag="Creator", diagram=dg("arrows", ev["progressive_passes"]))
     if s["passes_into_danger"] >= 3:
-        add(f"He plays passes into the dangerous zone, {s['passes_into_danger']} of them today.", ev["passes_into_danger"], s["passes_into_danger"], tag="Creator")
+        add(f"He plays passes into the dangerous zone, {s['passes_into_danger']} of them today.", ev["passes_into_danger"], s["passes_into_danger"], tag="Creator", diagram=dg("arrows", ev["passes_into_danger"]))
     if arche == "Finisher" or s["shots"] >= 3:
         add(f"He gets shots off: {s['shots']} today, worth {round(s['xg'], 2)} expected goals{', and ' + str(s['goals']) + ' went in' if s['goals'] else ''}.",
-            ev["shots"], s["shots"], tag="Finisher")
+            ev["shots"], s["shots"], tag="Finisher", diagram=dg("shots", ev["shots"]))
     if arche == "Engine" or s.get("distance_km", 0) >= 13:
-        add(f"He runs: {s['distance_km']} km covered" + (f" and {s['sprints']} sprints." if s["sprints"] else "."), value=s["distance_km"], tag="Engine")
+        add(f"He runs: {s['distance_km']} km covered" + (f" and {s['sprints']} sprints." if s["sprints"] else "."), value=s["distance_km"], tag="Engine", diagram=dg("heat_all"))
     if arche == "Presser" or s["pressures"] >= 60:
-        add(f"He closes people down: {s['pressures']} times he pressed the player on the ball.", value=s["pressures"], tag="Presser")
+        add(f"He closes people down: {s['pressures']} times he pressed the player on the ball.", value=s["pressures"], tag="Presser", diagram=dg("heat_defending"))
     if arche == "Wall" or s["blocks"] >= 2:
-        add(f"He puts his body in the way: {s['blocks']} shots blocked and {s['tackles_won']} tackles won.", ev["blocks"] + ev["tackles_won"], s["blocks"], tag="Wall")
+        add(f"He puts his body in the way: {s['blocks']} shots blocked and {s['tackles_won']} tackles won.", ev["blocks"] + ev["tackles_won"], s["blocks"], tag="Wall", diagram=dg("dots", ev["blocks"] + ev["tackles_won"]))
     if arche == "Carrier" or s["progressive_carries"] >= 4:
-        add(f"He drives forward with the ball: {s['progressive_carries']} runs that took the team up the pitch.", ev["progressive_carries"], s["progressive_carries"], tag="Carrier")
+        add(f"He drives forward with the ball: {s['progressive_carries']} runs that took the team up the pitch.", ev["progressive_carries"], s["progressive_carries"], tag="Carrier", diagram=dg("arrows", ev["progressive_carries"]))
     # how he thinks, in plain words
     faw_counts = dict(s.get("first_action_after_win") or {})
     total_faw = sum(faw_counts.values())
@@ -119,11 +123,12 @@ def build_playbook(st, pid: str) -> dict:
         verb = {"carry": "runs with it", "forward": "plays it forward", "sideways": "plays it sideways to keep it",
                 "backward": "plays it back to keep it safe", "shot": "shoots"}[top_k]
         think(f"When he wins the ball, he usually {verb}: {top_n} of {total_faw} times today.",
-              ev["interceptions"][:5] + ev["tackles_won"][:5], round(top_n / total_faw, 2))
+              ev["interceptions"][:5] + ev["tackles_won"][:5], round(top_n / total_faw, 2),
+              diagram=dg("win_then", ev["interceptions"] + ev["tackles_won"]))
     rz = hht.get("receives_in") or {}
     if rz:
         top = max(rz.items(), key=lambda kv: kv[1])
-        think(f"He asks for the ball in the {top[0]}, {_pct(top[1])} of the time.", value=top[1])
+        think(f"He asks for the ball in the {top[0]}, {_pct(top[1])} of the time.", value=top[1], diagram=dg("thirds", shares=rz))
     ttr = hht.get("time_to_release_s")
     if ttr is not None:
         tempo = "quickly, one or two touches" if ttr < 2.0 else ("in a couple of seconds" if ttr < 3.5 else "without rushing, he takes his time")

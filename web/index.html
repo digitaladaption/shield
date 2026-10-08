@@ -98,7 +98,7 @@
   .vbox{position:absolute;left:28px;bottom:118px;max-width:44%;background:rgba(21,27,36,.9);border-left:3px solid #7bc9a0;padding:8px 12px;font-size:13px;pointer-events:none;opacity:0;transition:opacity .2s}
   .vbox.show{opacity:1} .vbox.right{left:auto;right:12px} .vbox b{font-family:"Barlow Condensed";font-size:17px;font-weight:600;display:block;margin-bottom:2px} .vbox .opt{display:flex;gap:8px;color:var(--mute)} .vbox .opt i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-top:5px} .vbox .k{color:var(--ink)}
   canvas{cursor:crosshair}
-  ol.looks{padding-left:20px;margin:4px 0;max-width:62ch} ol.looks li{margin:4px 0} ol.looks button{padding:0 6px;font-size:12px;border-color:transparent;color:var(--amber)}
+  ol.looks{padding-left:20px;margin:4px 0} ol.looks li{margin:8px 0;display:grid;grid-template-columns:1fr 200px;gap:12px;align-items:center} ol.looks li canvas{width:200px;height:130px;border-radius:4px;background:var(--pitch)} @media (max-width:520px){ol.looks li{grid-template-columns:1fr} ol.looks li canvas{width:100%;height:auto}} ol.looks button{padding:0 6px;font-size:12px;border-color:transparent;color:var(--amber)}
   .points{display:grid;gap:6px;margin:6px 0} .point{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:start;border-top:1px solid var(--line);padding-top:6px;font-size:14px} .point .min{font-size:22px;font-weight:600;line-height:1} .point .row{margin:0}
   .tag{position:absolute;pointer-events:none}
   @media (prefers-reduced-motion:reduce){.caption{transition:none}}
@@ -338,7 +338,7 @@ function renderPanel(){
       h+=`<button data-arch="${best}" class="${focus===best?'on':''}"><b>${a.label}</b><span>${name(best)}</span></button>`}
     h+=`</div><h3>${fp.archetype_label}: ${fp.name}</h3><p>${pb.intro}</p>`;
     h+=`<h3>What playing like ${pb.first_name} looks like</h3><ol class="looks">`;
-    for(const l of pb.looks_like){const ev=l.evidence&&l.evidence[0];h+=`<li>${l.text}${ev?` <button data-ev="${ev}" title="jump to an example">see it</button>`:''}</li>`}
+    pb.looks_like.forEach((l,i)=>{const ev=l.evidence&&l.evidence[0];h+=`<li><span>${l.text}${ev?` <button data-ev="${ev}" title="jump to an example">see it</button>`:''}</span>${l.diagram?`<canvas class="mini" data-i="${i}" width="400" height="260" aria-label="diagram"></canvas>`:'<span></span>'}</li>`});
     h+=`</ol>`;
     h+=`<h3>His game today, the main points</h3>`;
     if(!pb.main_points.length)h+=`<p class="why">Nothing stood out from him in this match.</p>`;
@@ -355,6 +355,7 @@ function renderPanel(){
     h+=`<h3>The story</h3>`+storyBlock('kid',focus);
   }
   P.innerHTML=h; wirePanel();
+  if(mode==='kid'){const pb=B.playbooks[focus];P.querySelectorAll('canvas.mini').forEach(c=>miniPitch(c,pb.looks_like[+c.dataset.i].diagram,focus))}
 }
 function toggleFeed(){
   if(feed){feed.close();feed=null;feedItem=null;$('#feed').classList.remove('on');$('#feedStatus').hidden=true;return}
@@ -431,6 +432,26 @@ function updateVbox(v){const b=$('#vbox');b.classList.toggle('right',v.xy[0]<L/2
   if(v.view==='carrier')h+=v.lanes.slice(0,4).map(l=>`<div class="opt"><i style="background:${laneColor[l.state]}"></i><span class="k">${short(l.to)}</span><span>${l.state} · ${l.distance} m · difficulty ${l.difficulty} · danger ${l.danger_now}→${l.danger_if_arrives}</span></div>`).join('');
   else if(v.view==='defender')h+=v.closing.slice(0,3).map(c=>`<div class="opt"><i style="background:${c.state==='closed'?laneColor.blocked:laneColor.contested}"></i><span class="k">${short(c.to)}</span><span>${c.state} · ${c.my_distance_to_lane} m from the lane · danger if it arrives ${c.danger_if_arrives}</span></div>`).join('')+(v.marking?`<div class="opt"><i style="background:rgba(243,239,230,.6)"></i><span class="k">${short(v.marking)}</span><span>nearest opponent, ${v.marking_m} m</span></div>`:'');
   b.innerHTML=h;b.classList.add('show')}
+
+
+// ---------------- mini pitch diagrams for the playbook
+function miniPitch(canvas,d,pid){const g=canvas.getContext('2d');const MW=400,MH=260,MP=10;const mx=x=>MP+x/L*(MW-2*MP),my=y=>MP+y/W*(MH-2*MP);const team=teamOf(pid);const dir=team==='home'?1:-1;
+  g.clearRect(0,0,MW,MH);g.fillStyle='#2f5a41';g.fillRect(0,0,MW,MH);g.strokeStyle='rgba(255,255,255,.4)';g.lineWidth=1.5;
+  g.strokeRect(mx(0),my(0),mx(L)-mx(0),my(W)-my(0));g.beginPath();g.moveTo(mx(52.5),my(0));g.lineTo(mx(52.5),my(W));g.stroke();g.beginPath();g.arc(mx(52.5),my(34),9.15/L*(MW-2*MP),0,7);g.stroke();
+  for(const [x0,dd] of [[0,1],[L,-1]]){g.strokeRect(mx(x0),my(34-20.15),dd*16.5/L*(MW-2*MP),40.3/W*(MH-2*MP))}
+  // direction of attack
+  g.fillStyle='rgba(255,255,255,.5)';g.font='500 12px Barlow';g.font='500 14px Barlow';g.textAlign=dir>0?'right':'left';g.fillText(dir>0?'attacks this way →':'← attacks this way',dir>0?MW-14:14,MH-16);
+  const ev=id=>B.events.find(e=>e.id===id);
+  if(d.kind==='heat_defending'||d.kind==='heat_all'){const k=B.frames.ids.indexOf(pid);for(let i=0;i<B.frames.rows.length;i+=6){const r=B.frames.rows[i];if(d.kind==='heat_defending'&&possTeamAt(r[0])===team)continue;g.beginPath();g.arc(mx(r[3+2*k]),my(r[4+2*k]),9,0,7);g.fillStyle='rgba(242,179,91,.07)';g.fill()}
+    if(d.kind==='heat_defending'&&d.screen){const [gx,gy]=ownGoal(team);g.strokeStyle='rgba(243,239,230,.6)';g.setLineDash([4,4]);g.beginPath();g.moveTo(mx(52.5),my(34));g.lineTo(mx(gx),my(gy));g.stroke();g.setLineDash([])}}
+  else if(d.kind==='intercepts'){for(const id of d.ids){const e=ev(id);if(!e)continue;const ps=B.events.find(x=>x.id===e.pass_id);if(ps){g.strokeStyle='rgba(255,106,77,.75)';g.setLineDash([3,3]);g.lineWidth=1.5;g.beginPath();g.moveTo(mx(ps.x),my(ps.y));g.lineTo(mx(ps.end_x),my(ps.end_y));g.stroke();g.setLineDash([])}g.beginPath();g.arc(mx(e.x),my(e.y),5,0,7);g.fillStyle='#7bc9a0';g.fill()}}
+  else if(d.kind==='dots'){for(const id of d.ids){const e=ev(id);if(!e)continue;g.beginPath();g.arc(mx(e.x),my(e.y),5,0,7);g.fillStyle='#7bc9a0';g.fill()}}
+  else if(d.kind==='shots'){for(const id of d.ids){const e=ev(id);if(!e)continue;g.beginPath();g.arc(mx(e.x),my(e.y),4+e.xg*18,0,7);g.fillStyle=e.outcome==='goal'?'#f2b35b':'rgba(243,239,230,.7)';g.fill()}}
+  else if(d.kind==='arrows'){for(const id of d.ids){const e=ev(id);if(!e)continue;g.strokeStyle=e.type==='carry'?'rgba(242,179,91,.8)':'rgba(243,239,230,.75)';g.lineWidth=1.6;g.beginPath();g.moveTo(mx(e.x),my(e.y));g.lineTo(mx(e.end_x),my(e.end_y));g.stroke();g.beginPath();g.arc(mx(e.end_x),my(e.end_y),2.5,0,7);g.fillStyle=g.strokeStyle;g.fill()}}
+  else if(d.kind==='win_then'){for(const id of d.ids){const e=ev(id);if(!e)continue;g.beginPath();g.arc(mx(e.x),my(e.y),4,0,7);g.fillStyle='#7bc9a0';g.fill();
+      const nxt=B.events.find(x=>x.t>e.t&&x.t<e.t+6&&x.player===pid&&(x.type==='pass'||x.type==='carry'));if(nxt){g.strokeStyle=nxt.type==='carry'?'rgba(242,179,91,.85)':'rgba(243,239,230,.8)';g.lineWidth=1.6;g.beginPath();g.moveTo(mx(e.x),my(e.y));g.lineTo(mx(nxt.end_x),my(nxt.end_y));g.stroke()}}}
+  else if(d.kind==='thirds'){const sh=d.shares||{};const names=['defensive third','middle third','attacking third'];for(let i=0;i<3;i++){const share=sh[names[i]]||0;const u0=i/3,u1=(i+1)/3;const x0=dir>0?u0*L:(1-u1)*L,x1=dir>0?u1*L:(1-u0)*L;g.fillStyle=`rgba(242,179,91,${0.08+share*0.6})`;g.fillRect(mx(x0),my(0),mx(x1)-mx(x0),my(W)-my(0));g.fillStyle='rgba(243,239,230,.9)';g.font='600 18px "Barlow Condensed"';g.textAlign='center';g.fillText(`${Math.round(share*100)}%`,mx((x0+x1)/2),my(34)+6)}}
+}
 
 function pretty(k){return k.replace('_p90',' per 90').replace(/_/g,' ')}
 function fmtv(k,v){if(k==='possession'||k==='pass_accuracy')return Math.round(v*100)+'%';return typeof v==='number'?(Number.isInteger(v)?v:v.toFixed(2)):v}
