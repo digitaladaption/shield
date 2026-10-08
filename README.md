@@ -31,6 +31,10 @@ The hackathon rules require synthetic data and no real Premier League feed is us
 
 Click any player at any moment. For the man on the ball: every passing lane, open, contested or blocked, with the difficulty and the danger it would create, and the best option. For a defender: the lanes he is closing, whether he is between the ball and his goal, his tackle range, who he is marking. Computed with the same geometry the simulator used to play the match (`shield/engine/vision.py`, mirrored in the page), so it is the truth of the match, not an illustration. Also an MCP tool (`what_he_sees`) and `GET /api/see/{player}?clock=`.
 
+### The voice
+
+The stories are written in the register of a studio pundit talking to the viewer: judgement first, the number as proof, short sentences, football words, surname after the first mention, the 40th minute rather than 39:40, ten metres rather than 9.88. The register lives in `shield/agents/voice.py` as sentence patterns per fact, several variants each, in all four languages; the model gets the same guide as its instructions. The Verifier enforces it: a sentence with an exclamation mark, an em dash, or any of the words AI reaches for (showcase, testament, masterclass, pivotal, delve and friends) is rejected and sent back, whether it came from the templates or from the model.
+
 ### Agents you can watch
 
 Every story carries its trace: each Narrator draft, each Verifier verdict with the sentences it struck out and why, the Personalizer rewrite, the final check, with timings. "How the agents wrote it" under any story. The Analyst tab has a "Try to make it lie" box that runs any sentence through the same Verifier.

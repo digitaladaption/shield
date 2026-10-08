@@ -138,84 +138,29 @@ def mcp_tool_for_narrator(match_path: str):
                                        "compare_players", "get_momentum"])
 
 
-NARRATOR_INSTRUCTIONS = """You are the Narrator in a football match-intelligence system.
+from shield.agents.voice import STYLE_GUIDE  # noqa: E402
+
+NARRATOR_INSTRUCTIONS = STYLE_GUIDE + """
+You are the Narrator in a football match-intelligence system.
 You write ONLY from the fact packet you are given. Every sentence must end with a citation of the
 fact ids it uses, like [f3] or [f3, f8]. Never state a number that is not in a cited fact. Never name a
 player who is not in a cited fact. Do not use headings or bullet points. Write in English; translation
 happens later. If a tool is available you may call it for extra detail, but anything you learn from a tool
 that is not in the fact packet must NOT appear in the text."""
 
-PERSONALIZER_INSTRUCTIONS = """You are the Personalizer. You receive a verified English narrative with fact
-citations like [f3]. Rewrite it for the requested audience mode and language. Keep EVERY citation exactly
-where its sentence is, keep every number exactly as written, keep player names unchanged. Do not add facts.
-Return only the rewritten text."""
+PERSONALIZER_INSTRUCTIONS = STYLE_GUIDE + """
+You are the Personalizer. You receive a verified English narrative with fact citations like [f3]. Rewrite it for
+the requested audience mode and language, in the same pundit voice, as a native pundit in that language would
+speak it (not a translation, a re-telling). Keep EVERY citation exactly where its sentence is, keep every number
+exactly as written with a decimal point, keep player names unchanged. Do not add facts. Return only the text."""
 
 
 # ----------------------------------------------------------------------------- local narrator
 def local_narrate(req: NarrateRequest) -> str:
-    """Template narrator used when no model is configured. Cites facts so the
-    verifier treats it exactly like the model's output. Renders in any of the
-    template languages (en, es, de, fr); other languages fall back to English."""
-    from shield.engine import i18n
-    lang = req.language if req.language in i18n.LANGS else "en"
-    facts = req.packet["facts"]
-    txt = lambda f: (f.get("i18n") or {}).get(lang) or f["text"]
-    by_tag = lambda tag: [f for f in facts if tag in f["tags"]]
-    he = {"en": "He", "es": "Él", "de": "Er", "fr": "Il"}[lang]
-    out = []
-    score = by_tag("score")
-    if score:
-        out.append(f"{txt(score[0])} [{score[0]['id']}].")
-    focus = req.player_focus
-    pf = [f for f in facts if f.get("player") == focus] if focus else []
-    if req.mode in ("player", "kid") and pf:
-        fp = req.packet.get("player_focus") or {}
-        nm = fp.get("name", "He")
-        if req.mode == "kid":
-            out = []
-        for i, f in enumerate(pf[:4]):
-            t = txt(f) if i == 0 else txt(f).replace(nm, he, 1)
-            out.append(f"{t} [{f['id']}].")
-        short = nm.split()[-1] if req.mode == "kid" else nm
-        if req.mode == "kid" and fp:
-            hht = fp.get("how_he_thinks", {})
-            faw = hht.get("first_action_after_winning_ball", {})
-            if faw:
-                top = max(faw.items(), key=lambda kv: kv[1])
-                out.append(i18n.render("thinks", lang, name=short, dir=i18n.T["dir"][lang].get(top[0], top[0])) + f" [{pf[0]['id']}].")
-            strengths = fp.get("strengths", [])
-            weak = fp.get("weaknesses", [])
-            pretty = lambda m: i18n.metric(m, lang)
-            if strengths:
-                out.append(i18n.render("best", lang, m=pretty(strengths[0]["metric"])) + f" [{pf[0]['id']}].")
-            if weak:
-                out.append(i18n.render("work", lang, m=pretty(weak[0]["metric"])) + f" [{pf[0]['id']}].")
-            out.append(i18n.render("drill", lang) + f" [{pf[0]['id']}].")
-    elif req.mode == "overlay":
-        m = by_tag("moment")
-        if m:
-            return f"{txt(m[0])} [{m[0]['id']}]."
-    else:
-        n = 7 if req.mode == "analyst" else 3
-        moments = by_tag("moment")[: 2 if req.mode == "casual" else 4]
-        players = [f for f in facts if "moment" not in f["tags"] and "score" not in f["tags"] and f.get("player")]
-        players.sort(key=lambda f: -(float(f["value"]) if isinstance(f["value"], (int, float)) else 0)
-                     * (3 if "goals" in f["tags"] else 0.1 if "physical" in f["tags"] else 1))
-        if req.mode == "casual":
-            goal = [f for f in moments if "goal" in f["tags"]][:1]
-            stop = [f for f in moments if "stop" in f["tags"]][:1]
-            moments = goal + stop
-        for f in moments + players:
-            if len(out) >= n:
-                break
-            out.append(f"{txt(f)} [{f['id']}].")
-        if req.mode == "casual":
-            tps = [f for f in facts if "threat_prevented" in f["tags"]]
-            stop = max(tps, key=lambda f: f["value"]) if tps else None
-            if stop:
-                nm = stop["text"].split(" prevented")[0]
-                out.append(i18n.render("why", lang, name=nm) + f" [{stop['id']}].")
-    return " ".join(out) if out else "No facts yet. [f0]"
+    """Template narrator in the pundit voice (see voice.py). Cites facts so the
+    verifier treats it exactly like the model's output."""
+    from shield.agents.voice import narrate
+    return narrate(req)
 
 
 # ----------------------------------------------------------------------------- executors
@@ -257,7 +202,7 @@ class VerifierExecutor(Executor):
     @handler
     async def check(self, draft: Draft, ctx: WorkflowContext[Verified | Rejected]) -> None:
         t0 = time.perf_counter()
-        rep = verify(draft.text, draft.req.packet["facts"], draft.req.roster)
+        rep = verify(draft.text, draft.req.packet["facts"], draft.req.roster, lang=draft.req.language)
         verdict = "accepted" if rep.ok else ("accepted with cuts" if (draft.req.attempt >= self.max_attempts or draft.stage == "personalized") else "rejected, sent back")
         draft.req.step("Verifier", f"check {draft.stage}", t0, verdict=verdict, kept=sum(1 for x in rep.sentences if x.ok),
                        rejected=rep.rejected, problems=[{"text": x.text, "problems": x.problems} for x in rep.sentences if not x.ok])
@@ -298,7 +243,7 @@ class FinalCheckExecutor(Executor):
     @handler
     async def finish(self, draft: Draft, ctx: WorkflowContext[None, Story]) -> None:
         t0 = time.perf_counter()
-        rep = verify(draft.text, draft.req.packet["facts"], draft.req.roster)
+        rep = verify(draft.text, draft.req.packet["facts"], draft.req.roster, lang=draft.req.language)
         draft.req.step("Final check", "verify personalized text", t0, verdict="accepted" if rep.ok else "cuts applied",
                        kept=sum(1 for x in rep.sentences if x.ok), rejected=rep.rejected,
                        problems=[{"text": x.text, "problems": x.problems} for x in rep.sentences if not x.ok])

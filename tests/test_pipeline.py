@@ -104,3 +104,22 @@ def test_template_languages_verify(packet):
             rep = pl.verify(text, pk["facts"], roster)
             assert rep.ok, (lang, mode, rep.feedback())
             assert text != pl.local_narrate(pl.NarrateRequest(packet=pk, mode=mode, language="en", player_focus="H06", roster=roster))
+
+
+def test_verifier_rejects_slop(packet):
+    pk, roster = packet
+    f = next(x for x in pk["facts"] if "interceptions" in x["tags"] and x["player"] == "H06")
+    slop = f"Okonkwo-Hale delivered a defensive masterclass with {f['value']} interceptions [{f['id']}]! Truly remarkable [{f['id']}]."
+    rep = pl.verify(slop, pk["facts"], roster)
+    assert not rep.ok and rep.rejected == 2
+    joined = " ".join(p for s in rep.sentences for p in s.problems)
+    assert "masterclass" in joined and "exclamation" in joined
+
+
+def test_pundit_voice_says_the_name_once(packet):
+    pk, roster = packet
+    req = pl.NarrateRequest(packet=pk, mode="kid", language="en", player_focus="H06", roster=roster)
+    text = pl.local_narrate(req)
+    assert text.count("Dario Okonkwo-Hale") == 1 and text.count("Okonkwo-Hale") >= 3
+    assert "!" not in text and "—" not in text
+    assert "th minute" in text or "st minute" in text or "nd minute" in text or "rd minute" in text

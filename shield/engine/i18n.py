@@ -133,21 +133,20 @@ T = {
         "es": "Ritmo del partido: {c} tramos de control, {k} de caos, {b} equilibrados (tramos de 5 minutos)",
         "de": "Spielrhythmus: {c} Kontrollphasen, {k} Chaosphasen, {b} ausgeglichen (5-Minuten-Fenster)",
         "fr": "Rythme du match : {c} fenêtres de contrôle, {k} de chaos, {b} équilibrées (fenêtres de 5 minutes)"},
-    # overlay captions
-    "o_goal": {"en": "GOAL {name} (xG {xg})", "es": "GOL {name} (xG {xg})", "de": "TOR {name} (xG {xg})", "fr": "BUT {name} (xG {xg})"},
-    "o_chance": {"en": "{name} shot, xG {xg}, {speed} m/s", "es": "{name} tiro, xG {xg}, {speed} m/s",
-                 "de": "{name} Schuss, xG {xg}, {speed} m/s", "fr": "{name} tir, xG {xg}, {speed} m/s"},
-    "o_key_pass": {"en": "{name} key pass to {receiver}: {dist} m at {speed} m/s, difficulty {diff}",
-                   "es": "{name} pase clave a {receiver}: {dist} m a {speed} m/s, dificultad {diff}",
-                   "de": "{name} Schlüsselpass auf {receiver}: {dist} m mit {speed} m/s, Schwierigkeit {diff}",
-                   "fr": "{name} passe clé vers {receiver} : {dist} m à {speed} m/s, difficulté {diff}"},
-    "o_speed": {"en": "{name} {v} m/s, fastest of the match", "es": "{name} {v} m/s, el más rápido del partido",
-                "de": "{name} {v} m/s, schnellster des Spiels", "fr": "{name} {v} m/s, le plus rapide du match"},
-    "o_km": {"en": "{name} {v} km covered", "es": "{name} {v} km recorridos", "de": "{name} {v} km gelaufen", "fr": "{name} {v} km parcourus"},
-    "o_stop": {"en": "{name} {action}: danger {d} stopped", "es": "{name} {action}: {d} de peligro frenado",
-               "de": "{name} {action}: Gefahr {d} gestoppt", "fr": "{name} {action} : {d} de danger stoppé"},
-    "o_momentum": {"en": "Momentum: {club}", "es": "Inercia: {club}", "de": "Momentum: {club}", "fr": "Momentum : {club}"},
-    "o_chaos": {"en": "Chaos: {n} turnovers in 5 min", "es": "Caos: {n} pérdidas en 5 min", "de": "Chaos: {n} Ballverluste in 5 Min", "fr": "Chaos : {n} pertes en 5 min"},
+    # overlay captions (short, broadcast register)
+    "o_goal": {"en": "GOAL {name}. xG {xg}", "es": "GOL {name}. xG {xg}", "de": "TOR {name}. xG {xg}", "fr": "BUT {name}. xG {xg}"},
+    "o_chance": {"en": "{name}, {xg} xG. {verdict}", "es": "{name}, {xg} xG. {verdict}", "de": "{name}, {xg} xG. {verdict}", "fr": "{name}, {xg} xG. {verdict}"},
+    "o_key_pass": {"en": "{name} to {receiver}. {dist} m, difficulty {diff}. Proper ball",
+                   "es": "{name} para {receiver}. {dist} m, dificultad {diff}. Balón de verdad",
+                   "de": "{name} auf {receiver}. {dist} m, Schwierigkeit {diff}. Richtiger Ball",
+                   "fr": "{name} pour {receiver}. {dist} m, difficulté {diff}. Un vrai ballon"},
+    "o_speed": {"en": "{name}, {v} m/s. Quickest of the match", "es": "{name}, {v} m/s. El más rápido del partido",
+                "de": "{name}, {v} m/s. Schnellster des Spiels", "fr": "{name}, {v} m/s. Le plus rapide du match"},
+    "o_km": {"en": "{name} past {v} km. Engine", "es": "{name} pasa los {v} km. Motor", "de": "{name} über {v} km. Motor", "fr": "{name} passe les {v} km. Moteur"},
+    "o_stop": {"en": "{name} {act}. Danger {d} gone", "es": "{name} {act}. {d} de peligro, fuera",
+               "de": "{name} {act}. Gefahr {d} weg", "fr": "{name} {act}. Danger {d} envolé"},
+    "o_momentum": {"en": "Momentum. {club} have it", "es": "Inercia. La tiene el {club}", "de": "Momentum. {club} hat es", "fr": "Momentum. {club} l'a"},
+    "o_chaos": {"en": "Chaos. {n} turnovers in five minutes", "es": "Caos. {n} pérdidas en cinco minutos", "de": "Chaos. {n} Ballverluste in fünf Minuten", "fr": "Chaos. {n} pertes en cinq minutes"},
     # local narrator connectives
     "why": {"en": "Why it matters: the goals get the replays, but {name} was ending attacks before they started",
             "es": "Por qué importa: los goles se llevan las repeticiones, pero {name} cortaba los ataques antes de que empezaran",
@@ -213,12 +212,32 @@ def word(key: str, lang: str) -> str:
     return WORDS.get(lang, WORDS["en"]).get(key, key)
 
 
+OVERLAY_ACT = {
+    "en": {"interception": "reads it", "tackle": "wins it", "block": "blocks it"},
+    "es": {"interception": "la lee", "tackle": "la gana", "block": "la bloquea"},
+    "de": {"interception": "liest es", "tackle": "gewinnt ihn", "block": "blockt"},
+    "fr": {"interception": "la lit", "tackle": "la gagne", "block": "la contre"},
+}
+VERDICT = {
+    "en": ["Half chance", "Decent chance", "Should score"],
+    "es": ["Media ocasión", "Buena ocasión", "Tiene que marcar"],
+    "de": ["Halbe Chance", "Gute Chance", "Muss rein"],
+    "fr": ["Demi-occasion", "Bonne occasion", "Doit marquer"],
+}
+
+
 def all_langs(key: str, **params) -> dict[str, str]:
     """Render a fact in every language. Params that are enumerations (outcome,
-    action) are passed as raw keys and translated per language."""
+    action) are passed as raw keys and translated per language; a param whose
+    value is a dict keyed by language is picked per language."""
     out = {}
     for lang in LANGS:
-        p = dict(params)
+        p = {}
+        for k, v in params.items():
+            if isinstance(v, dict) and set(v) & set(LANGS):
+                p[k] = v.get(lang) or v.get("en")
+            else:
+                p[k] = v
         for k in ("outcome", "action"):
             if k in p:
                 p[k] = word(p[k], lang)

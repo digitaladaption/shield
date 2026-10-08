@@ -84,16 +84,20 @@ class LiveTracker:
                     kind, detail = "stop", {"action": e["type"], "danger_stopped": round(d, 3), "xg_prevented": round(xg, 3)}
         if kind is None:
             return None
+        from . import i18n
         if kind == "goal":
-            text = f"GOAL {nm} (xG {detail['xg']})"
+            texts = i18n.all_langs("o_goal", name=nm, xg=detail["xg"])
         elif kind == "key_pass":
-            text = f"{nm} key pass: {detail['distance']} m at {detail['pass_speed']} m/s, difficulty {detail['difficulty']}"
+            texts = i18n.all_langs("o_key_pass", name=nm, receiver=self.players.get(detail["receiver"], {}).get("name", "").split()[-1],
+                                   dist=round(detail["distance"]), diff=detail["difficulty"])
         elif kind == "chance":
-            text = f"{nm} shot, xG {detail['xg']}"
+            vi = 0 if detail["xg"] < 0.15 else 1 if detail["xg"] < 0.35 else 2
+            texts = i18n.all_langs("o_chance", name=nm, xg=detail["xg"], verdict={lg: i18n.VERDICT[lg][vi] for lg in i18n.LANGS})
         else:
-            text = f"{nm} {detail['action']}: danger {detail['danger_stopped']} stopped"
+            texts = i18n.all_langs("o_stop", name=nm, act={lg: i18n.OVERLAY_ACT[lg][detail["action"]] for lg in i18n.LANGS}, d=detail["danger_stopped"])
+        text = texts["en"]
         item = {"t_start": e["t"], "t_end": e["t"] + 6.0, "kind": kind, "player": pid, "team": e.get("team"),
-                "text": {"en": text}, "evidence": [e["id"]] + ([e["pass_id"]] if e["type"] == "interception" else []),
+                "text": texts, "evidence": [e["id"]] + ([e["pass_id"]] if e["type"] == "interception" else []),
                 "detail": detail, "x": e.get("x"), "y": e.get("y"),
                 "engine_latency_ms": round((time.perf_counter() - t0) * 1000, 3)}
         self.moments.append(item)

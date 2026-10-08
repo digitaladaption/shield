@@ -52,10 +52,13 @@ class Fact:
     team: str | None = None
     t: float | None = None
     i18n: dict = field(default_factory=dict)
+    key: str = ""
+    params: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {"id": self.id, "text": self.text, "value": self.value, "evidence": self.evidence,
-                "tags": self.tags, "player": self.player, "team": self.team, "t": self.t, "i18n": self.i18n}
+                "tags": self.tags, "player": self.player, "team": self.team, "t": self.t, "i18n": self.i18n,
+                "key": self.key, "params": self.params}
 
 
 # --------------------------------------------------------------------------- helpers
@@ -666,7 +669,7 @@ class MatchState:
         self._fact_n += 1
         texts = i18n.all_langs(key, **params)
         f = Fact(id=f"f{self._fact_n}", text=texts["en"], value=value, evidence=list(evidence)[:20],
-                 tags=list(tags), player=player, team=team, t=t, i18n=texts)
+                 tags=list(tags), player=player, team=team, t=t, i18n=texts, key=key, params=dict(params))
         self.facts.append(f)
         return f
 
@@ -835,14 +838,15 @@ class MatchState:
             if m["kind"] == "goal":
                 texts = i18n.all_langs("o_goal", name=nm, xg=d["xg"])
             elif m["kind"] == "chance":
-                texts = i18n.all_langs("o_chance", name=nm, xg=d["xg"], speed=d["shot_speed"])
+                vi = 0 if d["xg"] < 0.15 else 1 if d["xg"] < 0.35 else 2
+                texts = i18n.all_langs("o_chance", name=nm, xg=d["xg"], verdict={lg: i18n.VERDICT[lg][vi] for lg in i18n.LANGS})
             elif m["kind"] == "key_pass":
-                texts = i18n.all_langs("o_key_pass", name=nm, receiver=self.data.name_of(d["receiver"]), dist=d["distance"],
-                                       speed=d["pass_speed"], diff=d["difficulty"])
+                texts = i18n.all_langs("o_key_pass", name=nm, receiver=self.data.name_of(d["receiver"]).split()[-1], dist=round(d["distance"]),
+                                       diff=d["difficulty"])
             elif m["kind"] == "milestone":
                 texts = i18n.all_langs("o_speed" if d["milestone"] == "top_speed" else "o_km", name=nm, v=d["value"])
             elif m["kind"] == "stop":
-                texts = i18n.all_langs("o_stop", name=nm, action=d["action"], d=d["danger_stopped"])
+                texts = i18n.all_langs("o_stop", name=nm, act={lg: i18n.OVERLAY_ACT[lg][d["action"]] for lg in i18n.LANGS}, d=d["danger_stopped"])
             elif m["kind"] == "momentum_shift":
                 texts = i18n.all_langs("o_momentum", club=self.data.clubs[m["team"]])
             else:

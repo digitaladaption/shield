@@ -164,6 +164,7 @@ const pick=o=>o?(o[lang]??o.en??Object.values(o)[0]??''):'';
 const archLabel=k=>(B.archetypes[k]&&pick(B.archetypes[k].label_i18n))||(B.archetypes[k]||{}).label||k;
 const archOf=pid=>B.fingerprints[pid]?archLabel(B.fingerprints[pid].archetype):'';
 const drillName=n=>((B.drills_i18n||{})[n]||{})[lang]?.name||n;
+function minutePhrase(sec){const m=Math.max(1,Math.floor(sec/60)+((sec%60)>0?1:0));const suf=lang==='en'?((m%100>=11&&m%100<=13)?'th':({1:'st',2:'nd',3:'rd'}[m%10]||'th')):'';let s=t('min_en',{n:m,suf});return s[0].toUpperCase()+s.slice(1)}
 const ptMoment=p=>({kind:p.kind,t:p.t,minute:p.minute,team:p.team,player:p.player,evidence:p.evidence,detail:p.detail,x:p.x,y:p.y,rank:p.rank,possession_id:p.possession_id});
 function applyChrome(){
   $('#play').textContent=playing?t('pause'):t('play');$('#live').textContent=t('live');$('#live').title=t('live_title');$('#feed').textContent=t('feed');$('#feed').title=t('feed_title');
@@ -327,8 +328,8 @@ function renderPanel(){
     h+=`<h2>${t('fan_h')}</h2><div class="row"><select id="club"><option value="home" ${club==='home'?'selected':''}>${t('my_club')}: ${clubs().home}</option><option value="away" ${club==='away'?'selected':''}>${t('my_club')}: ${clubs().away}</option></select></div>${storyBlock('casual')}${langNote()}`;
     const mine=momentsVisible().filter(m=>m.team===club);
     const top=mine.find(m=>m.kind==='stop'&&m.detail.action==='interception')||mine.find(m=>m.kind==='stop');
-    if(top)h+=`<h3>${t('miss_h',{club:clubs()[club]})}</h3><p>${fmt(top.t)} ${name(top.player)} ${t('a_'+top.detail.action)}, ${t('danger_stopped',{d:top.detail.danger_stopped})}. <button data-jump="${top.rank}">${t('watch')}</button> ${top.detail.action==='interception'?`<button data-ghost="${top.rank}">${t('without')}</button>`:''}</p>`;
-    const kp=mine.find(m=>m.kind==='key_pass'); if(kp)h+=`<p>${fmt(kp.t)} ${name(kp.player)} ${t('kp_line',{dist:kp.detail.distance,speed:kp.detail.pass_speed})}. <button data-jump="${kp.rank}">${t('watch')}</button></p>`;
+    if(top)h+=`<h3>${t('miss_h',{club:clubs()[club]})}</h3><p>${t('miss_line',{min:minutePhrase(top.t),name:name(top.player),act:t('oa_'+top.detail.action),d:top.detail.danger_stopped})} <button data-jump="${top.rank}">${t('watch')}</button> ${top.detail.action==='interception'?`<button data-ghost="${top.rank}">${t('without')}</button>`:''}</p>`;
+    const kp=mine.find(m=>m.kind==='key_pass'); if(kp)h+=`<p>${t('kp_line2',{min:minutePhrase(kp.t),name:name(kp.player),receiver:short(kp.detail.receiver),dist:Math.round(kp.detail.distance)})} <button data-jump="${kp.rank}">${t('watch')}</button></p>`;
     const stoppers=Object.entries(B.players).filter(([id,p])=>p.team===club&&p.role!=='GK').sort((a,b)=>b[1].threat_prevented-a[1].threat_prevented).slice(0,3);
     h+=`<h3>${t('quiet_h',{club:clubs()[club]})}</h3><table>${stoppers.map(([id,p])=>`<tr><td>${p.name}<span class="pill">${archOf(id)}</span></td><td class="n">${B.possessions.filter(q=>q.ended_by===id).length} ${t('attacks_ended')}</td></tr>`).join('')}</table>`;
   }

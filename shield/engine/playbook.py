@@ -140,7 +140,7 @@ def build_playbook(st, pid: str) -> dict:
     ttr = hht.get("time_to_release_s")
     if ttr is not None:
         tk = "fast" if ttr < 2.0 else ("mid" if ttr < 3.5 else "slow")
-        think("release", dict(tempo={lang: TEMPO[lang][tk] for lang in LANGS}, s=ttr), value=ttr)
+        think("release", dict(tempo={lang: TEMPO[lang][tk] for lang in LANGS}, s=round(ttr, 1)), value=ttr)
 
     # main points: his moments, ranked
     mine = [mm for mm in st.moments if mm["player"] == pid and mm["kind"] in ("goal", "chance", "stop", "key_pass")]
@@ -156,17 +156,15 @@ def build_playbook(st, pid: str) -> dict:
         why = {}
         for lang in LANGS:
             if mm["kind"] == "goal":
-                why[lang] = WHY["goal"][lang].format(dist=d["distance"], xg=d["xg"])
+                why[lang] = WHY["goal"][lang].format(dist=round(d["distance"]), xg=d["xg"])
             elif mm["kind"] == "chance":
-                why[lang] = WHY["chance"][lang].format(dist=d["distance"], xg=d["xg"], outcome=i18n.word(d["outcome"], lang))
+                why[lang] = WHY["chance"][lang].format(dist=round(d["distance"]), xg=d["xg"], outcome=i18n.word(d["outcome"], lang))
             elif mm["kind"] == "stop":
                 cf = st.counterfactual(mm["evidence"][0])
                 why[lang] = WHY["stop"][lang].format(did=WHY["did"][lang][d["action"]], d=d["danger_stopped"],
                                                      pct=round(cf.get("shot_rate_from_here", 0) * 100))
-                if lang == "es":
-                    why[lang] = why[lang].replace("Él ", "", 1)
             else:
-                why[lang] = WHY["key_pass"][lang].format(dist=d["distance"], receiver=st.data.name_of(d["receiver"]),
+                why[lang] = WHY["key_pass"][lang].format(dist=round(d["distance"]), receiver=st.data.name_of(d["receiver"]).split()[-1],
                                                          d0=d["danger_before"], d1=d["danger_after"], diff=d["difficulty"])
         points.append({"kind": mm["kind"], "t": mm["t"], "minute": mm["minute"], "rank": mm["rank"], "why": why["en"], "why_i18n": why,
                        "evidence": mm["evidence"], "x": mm["x"], "y": mm["y"], "detail": d, "team": mm.get("team"), "player": pid,

@@ -88,7 +88,7 @@ def split_sentences(text: str) -> list[str]:
 
 
 def verify(narrative: str, facts: list[dict], roster_names: list[str] | None = None,
-           allow_uncited_minutes: bool = True) -> VerifyReport:
+           allow_uncited_minutes: bool = True, lang: str = "en", style: bool = True) -> VerifyReport:
     by_id = {f["id"]: f for f in facts}
     roster_names = roster_names or []
     checks: list[SentenceCheck] = []
@@ -107,7 +107,9 @@ def verify(narrative: str, facts: list[dict], roster_names: list[str] | None = N
             names_pool += " " + str(by_id[c].get("text", ""))
         # numbers
         for n in _numbers_in(body):
-            if allow_uncited_minutes and re.search(rf"\b{int(n)}(?:st|nd|rd|th)?\s*(?:minute|min|')", body) and n <= 95:
+            if allow_uncited_minutes and n <= 95 and (
+                    re.search(rf"\b{int(n)}(?:st|nd|rd|th|e|er|\.)?\s*(?:minute|min|Minute|minuto|')", body)
+                    or re.search(rf"(?:minute|minuto|Minute|min)\s*{int(n)}\b", body)):
                 continue
             if not _number_supported(n, pool):
                 problems.append(f"number {n:g} not in cited facts")
@@ -116,6 +118,9 @@ def verify(narrative: str, facts: list[dict], roster_names: list[str] | None = N
             surname = full.split()[-1]
             if re.search(rf"\b{re.escape(surname)}\b", body) and surname not in names_pool:
                 problems.append(f"player {surname} not in cited facts")
+        if style:
+            from shield.agents.voice import style_problems
+            problems += style_problems(body, lang)
         ok = not problems
         checks.append(SentenceCheck(text=sent, cited=cited, ok=ok, problems=problems))
         if ok:
