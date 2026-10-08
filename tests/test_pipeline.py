@@ -123,3 +123,25 @@ def test_pundit_voice_says_the_name_once(packet):
     assert text.count("Dario Okonkwo-Hale") == 1 and text.count("Okonkwo-Hale") >= 3
     assert "!" not in text and "—" not in text
     assert "th minute" in text or "st minute" in text or "nd minute" in text or "rd minute" in text
+
+
+def test_football_units(packet):
+    """English says yards and landmarks, the other languages say metres, speeds are km/h, and the
+    Verifier accepts both because the fact states both."""
+    from shield.engine import units
+    pk, roster = packet
+    goal = next(f for f in pk["facts"] if f["key"] == "m_goal")
+    assert "yards" in goal["text"] and "m)" in goal["text"] and goal["params"]["yd"] == units.yards(goal["params"]["dist"])
+    en = pl.local_narrate(pl.NarrateRequest(packet=pk, mode="analyst", language="en", player_focus=None, roster=roster))
+    es = pl.local_narrate(pl.NarrateRequest(packet=pk, mode="analyst", language="es", player_focus=None, roster=roster))
+    assert "yards" in en and "metre" not in en and " m/s" not in en
+    assert "metros" in es and "yard" not in es
+    ok = pl.verify(f"He scored from {goal['params']['yd']} yards [{goal['id']}].", pk["facts"], roster)
+    assert ok.ok, ok.feedback()
+    bad = pl.verify(f"He scored from 50 yards [{goal['id']}].", pk["facts"], roster)
+    assert not bad.ok
+    assert units.shot_where(5.0, 101.0, 34.0, "en") == "from inside the six-yard box"
+    assert units.shot_where(18.0, 87.5, 34.0, "en") == "from the edge of the box"
+    assert units.shot_where(22.9, 82.0, 34.0, "en") == "from 25 yards"
+    assert units.shot_where(22.9, 82.0, 34.0, "de") == "aus 23 Metern"
+    assert units.kmh(10.0) == 36.0

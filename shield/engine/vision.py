@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 
 from .match import Frame, MatchData
+from . import units
 
 LANE_REACH = 3.0       # an opponent this close to the lane can cut it out
 CONTEST_REACH = 5.0    # this close and the pass is risky
@@ -199,11 +200,11 @@ class VisionEngine:
             if closed:
                 bits.append(f"closing {len(closed)} lane{'s' if len(closed) != 1 else ''}" +
                             (f" (most dangerous: to {closed[0]['to_name'].split()[-1]}, danger {closed[0]['danger_if_arrives']})" if closed else ""))
-            bits.append("between the ball and his goal" if in_wedge else f"{round(dline)} m off the ball-to-goal line")
+            bits.append("between the ball and his goal" if in_wedge else f"{units.dist_prose(dline, 'en')} off the ball-to-goal line")
             if out["can_tackle"]:
                 bits.append("in tackling range")
             elif out["dist_to_ball"] < 8:
-                bits.append(f"{out['dist_to_ball']} m from the ball")
+                bits.append(f"{units.dist_prose(out['dist_to_ball'], 'en')} from the ball")
             out["read"] = f"{p['name']}: " + ", ".join(bits) + "."
             return out
 
@@ -219,7 +220,7 @@ class VisionEngine:
         if "lane_from_carrier" in info:
             ln = info["lane_from_carrier"]
             out["read"] = (f"{p['name']} is {ln['state']} for a pass from {self.players[carrier]['name'].split()[-1]}, "
-                           f"{round(space, 1)} m of space, danger here {info['danger_here']}.")
+                           f"{units.dist_prose(space, 'en')} of space, danger here {info['danger_here']}.")
         else:
-            out["read"] = f"{p['name']} has {round(space, 1)} m of space, danger here {info['danger_here']}."
+            out["read"] = f"{p['name']} has {units.dist_prose(space, 'en')} of space, danger here {info['danger_here']}."
         return out

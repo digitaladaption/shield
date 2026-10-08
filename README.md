@@ -33,7 +33,7 @@ Click any player at any moment. For the man on the ball: every passing lane, ope
 
 ### The voice
 
-The stories are written in the register of a studio pundit talking to the viewer: judgement first, the number as proof, short sentences, football words, surname after the first mention, the 40th minute rather than 39:40, ten metres rather than 9.88. The register lives in `shield/agents/voice.py` as sentence patterns per fact, several variants each, in all four languages; the model gets the same guide as its instructions. The Verifier enforces it: a sentence with an exclamation mark, an em dash, or any of the words AI reaches for (showcase, testament, masterclass, pivotal, delve and friends) is rejected and sent back, whether it came from the templates or from the model.
+The stories are written in the register of a studio pundit talking to the viewer: judgement first, the number as proof, short sentences, football words, surname after the first mention, the 40th minute rather than 39:40. Units are football's, not the data's: in English a shot is from 25 yards, from the edge of the box or from inside the six-yard box, a pass is a 30-yard ball, a sprint is in km/h; Spanish, German and French say metres and name the same landmarks (la frontal del área, der Fünfmeterraum, l'entrée de la surface). The data stays in metres and every fact states both, so the Verifier accepts either (`shield/engine/units.py`, mirrored in the page). The register lives in `shield/agents/voice.py` as sentence patterns per fact, several variants each, in all four languages; the model gets the same guide as its instructions. The Verifier enforces it: a sentence with an exclamation mark, an em dash, or any of the words AI reaches for (showcase, testament, masterclass, pivotal, delve and friends) is rejected and sent back, whether it came from the templates or from the model.
 
 ### Agents you can watch
 
@@ -61,7 +61,7 @@ Enter a kid's simple match stats and it finds the archetype whose *shape* they r
 
 | Brief | Where |
 |---|---|
-| Player identification, speed and distance indicators on thresholds | name tags on the pitch above 7.5 m/s; overlay items for a new fastest sprint and for 10 km covered |
+| Player identification, speed and distance indicators on thresholds | name tags on the pitch above 27 km/h; overlay items for a new fastest sprint and for 10 km covered |
 | Pass quality: distance, accuracy, difficulty | every pass event carries all three; Analyst mode has a pass quality table; key passes are moments |
 | Ball speed and shot speed | on pass and shot events, shown in captions and freeze-frames |
 | Narratives, milestones, recaps | Narrator agent from the fact packet; Fan, Analyst and Player focus modes |

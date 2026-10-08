@@ -84,12 +84,12 @@ class LiveTracker:
                     kind, detail = "stop", {"action": e["type"], "danger_stopped": round(d, 3), "xg_prevented": round(xg, 3)}
         if kind is None:
             return None
-        from . import i18n
+        from . import i18n, units
         if kind == "goal":
             texts = i18n.all_langs("o_goal", name=nm, xg=detail["xg"])
         elif kind == "key_pass":
             texts = i18n.all_langs("o_key_pass", name=nm, receiver=self.players.get(detail["receiver"], {}).get("name", "").split()[-1],
-                                   dist=round(detail["distance"]), diff=detail["difficulty"])
+                                   dist={lg: units.dist_prose(detail["distance"], lg) for lg in i18n.LANGS}, diff=detail["difficulty"])
         elif kind == "chance":
             vi = 0 if detail["xg"] < 0.15 else 1 if detail["xg"] < 0.35 else 2
             texts = i18n.all_langs("o_chance", name=nm, xg=detail["xg"], verdict={lg: i18n.VERDICT[lg][vi] for lg in i18n.LANGS})

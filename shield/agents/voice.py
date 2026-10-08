@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import re
 
+from shield.engine import units
+
 STYLE_GUIDE = """VOICE. You are a former top-level player talking to the viewer from the studio. Direct, warm, a bit blunt.
 - Judgement first, number second, as proof. "He's read it fourteen times today" beats "He made 14 interceptions".
 - Talk to the viewer: "look at", "watch", "you see where he is".
@@ -104,29 +106,29 @@ P = {
         "fr": ["{hg}-{ag} {when}, et c'est le travail de l'ombre qui le maintient ainsi"],
     },
     "m_goal": {
-        "en": ["The goal comes in {clock}, {name} from {dist} metres, {xgw} at {xg} xG, and he's put it away",
-               "{clock}, and {name} scores from {dist} metres, {xg} xG, {xgw}, but they all count",
-               "{name}'s goal in {clock} will be on every reel tonight, {dist} metres out, {xg} xG, and it's the easy bit to show"],
-        "es": ["El gol llega en el {clock}, {name} desde {dist} metros, {xgw} con {xg} xG, y la ha metido",
-               "{clock}, y {name} marca desde {dist} metros, {xg} xG, {xgw}, pero todos cuentan"],
-        "de": ["Das Tor fällt in {clock}, {name} aus {dist} Metern, {xgw} bei {xg} xG, und er macht ihn rein",
-               "In {clock}, {name} trifft aus {dist} Metern, {xg} xG, {xgw}, aber die zählen alle"],
-        "fr": ["Le but arrive à {clock}, {name} de {dist} mètres, {xgw} à {xg} xG, et il l'a mis",
-               "{clock}, et {name} marque de {dist} mètres, {xg} xG, {xgw}, mais ils comptent tous"],
+        "en": ["The goal comes in {clock}, {name} {where}, {xgw} at {xg} xG, and he's put it away",
+               "{clock}, and {name} scores {where}, {xg} xG, {xgw}, but they all count",
+               "{name}'s goal in {clock} will be on every reel tonight, {where}, {xg} xG, and it's the easy bit to show"],
+        "es": ["El gol llega en el {clock}, {name} {where}, {xgw} con {xg} xG, y la ha metido",
+               "{clock}, y {name} marca {where}, {xg} xG, {xgw}, pero todos cuentan"],
+        "de": ["Das Tor fällt in {clock}, {name} {where}, {xgw} bei {xg} xG, und er macht ihn rein",
+               "In {clock}, {name} trifft {where}, {xg} xG, {xgw}, aber die zählen alle"],
+        "fr": ["Le but arrive à {clock}, {name} {where}, {xgw} à {xg} xG, et il l'a mis",
+               "{clock}, et {name} marque {where}, {xg} xG, {xgw}, mais ils comptent tous"],
     },
     "m_chance": {
-        "en": ["{clock}, and {name} gets a shot away from {dist} metres, {xg} xG, {xgw}, and it's {outcome}",
-               "Look at {clock}, {name} from {dist} metres, {xgw} at {xg} xG, {outcome}, and he knows it"],
-        "es": ["{clock}, {name} tira desde {dist} metros, {xg} xG, {xgw}, y acaba {outcome}",
-               "Ojo al {clock}, {name} desde {dist} metros, {xgw} con {xg} xG, {outcome}, y él lo sabe"],
-        "de": ["In {clock}, {name} kommt aus {dist} Metern zum Abschluss, {xg} xG, {xgw}, und er wird {outcome}",
-               "Schau auf {clock}, {name} aus {dist} Metern, {xgw} bei {xg} xG, {outcome}, und er weiß es"],
-        "fr": ["{clock}, {name} frappe de {dist} mètres, {xg} xG, {xgw}, et c'est {outcome}",
-               "Regardez à {clock}, {name} de {dist} mètres, {xgw} à {xg} xG, {outcome}, et il le sait"],
+        "en": ["{clock}, and {name} gets a shot away {where}, {xg} xG, {xgw}, and it's {outcome}",
+               "Look at {clock}, {name} {where}, {xgw} at {xg} xG, {outcome}, and he knows it"],
+        "es": ["{clock}, {name} tira {where}, {xg} xG, {xgw}, y acaba {outcome}",
+               "Ojo al {clock}, {name} {where}, {xgw} con {xg} xG, {outcome}, y él lo sabe"],
+        "de": ["In {clock}, {name} kommt {where} zum Abschluss, {xg} xG, {xgw}, und er wird {outcome}",
+               "Schau auf {clock}, {name} {where}, {xgw} bei {xg} xG, {outcome}, und er weiß es"],
+        "fr": ["{clock}, {name} frappe {where}, {xg} xG, {xgw}, et c'est {outcome}",
+               "Regardez à {clock}, {name} {where}, {xgw} à {xg} xG, {outcome}, et il le sait"],
     },
     "m_key_pass": {
-        "en": ["Watch the pass in {clock}, {name} finds {receiver} from {dist} metres, the danger goes from {d0} to {d1}, difficulty {diff}, and that's a proper ball",
-               "{clock}, and it's {name} to {receiver}, {dist} metres, and it takes the danger from {d0} to {d1} in one go, difficulty {diff}, that's the pass that opens them"],
+        "en": ["Watch the pass in {clock}, {name} finds {receiver} with a {yd}-yard ball, the danger goes from {d0} to {d1}, difficulty {diff}, and that's a proper pass",
+               "{clock}, and it's {name} to {receiver}, {yd} yards, and it takes the danger from {d0} to {d1} in one go, difficulty {diff}, that's the pass that opens them"],
         "es": ["Ojo al pase del {clock}, {name} encuentra a {receiver} a {dist} metros, el peligro pasa de {d0} a {d1}, dificultad {diff}, y eso es un balón de verdad",
                "{clock}, {name} para {receiver}, {dist} metros, y el peligro sube de {d0} a {d1} de golpe, dificultad {diff}, ese es el pase que los abre"],
         "de": ["Schau dir den Pass in {clock} an, {name} findet {receiver} über {dist} Meter, die Gefahr geht von {d0} auf {d1}, Schwierigkeit {diff}, das ist ein richtiger Ball",
@@ -264,10 +266,10 @@ P = {
         "fr": ["{club} a eu {poss}% du ballon, {passes} passes à {acc}%, donc ils savaient le garder, la question c'est ce qu'ils en ont fait"],
     },
     "m_speed": {
-        "en": ["{clock}, and {name} hits {v} metres a second, quickest sprint of the match, and it's a defender doing it"],
-        "es": ["{clock}, {name} se va a {v} metros por segundo, el sprint más rápido del partido"],
-        "de": ["In {clock}, {name} erreicht {v} Meter pro Sekunde, schnellster Sprint des Spiels"],
-        "fr": ["{clock}, {name} monte à {v} mètres par seconde, le sprint le plus rapide du match"],
+        "en": ["{clock}, and {name} hits {kmh} kilometres an hour, quickest sprint of the match, and that's not a man coasting"],
+        "es": ["{clock}, {name} se va a {kmh} kilómetros por hora, el sprint más rápido del partido"],
+        "de": ["In {clock}, {name} geht auf {kmh} km/h, schnellster Sprint des Spiels"],
+        "fr": ["{clock}, {name} monte à {kmh} km/h, le sprint le plus rapide du match"],
     },
     "m_km": {
         "en": ["{clock}, and {name} has just passed {v} kilometres, which tells you about the engine"],
@@ -372,7 +374,7 @@ def minute_phrase(clock: str, lang: str) -> str:
         suf = "th" if 10 <= m % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(m % 10, "th")
         return f"the {m}{suf} minute"
     if lang == "es":
-        return f"el minuto {m}"
+        return f"minuto {m}"      # the patterns supply the article: "en el minuto 40", "Ojo al minuto 40"
     if lang == "de":
         return f"Minute {m}"
     return f"la {m}e minute"
@@ -443,7 +445,13 @@ def render(fact: dict, lang: str, mode: str = "casual") -> str | None:
     if "clock" in p and key != "score":
         p["clock"] = minute_phrase(str(p["clock"]), lang)
     if "dist" in p:
-        p["dist"] = round(float(p["dist"]))   # a pundit says ten metres, not 9.88; within the Verifier's rounding
+        # football units: yards in English, metres elsewhere; shots get a landmark
+        # ("from the edge of the box") computed from where the ball was struck
+        p["yd"] = units.yards(p["dist"])
+        p["dist"] = round(float(p["dist"]))
+        p["where"] = units.shot_where(p["dist"], p.get("x"), p.get("y"), lang)
+    if "v" in p and key == "m_speed":
+        p["kmh"] = p.get("kmh") or units.kmh(p["v"])
     if key == "score":
         p["when"] = when_phrase(str(p["clock"]), lang)
         hg, ag = int(p["hg"]), int(p["ag"])

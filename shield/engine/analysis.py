@@ -381,13 +381,22 @@ class MatchState:
                 if prev is not None and pid in prev.players:
                     px, py = prev.players[pid]
                     step = math.hypot(x - px, y - py)
-                    a["dist"] += step
                     sp = step / tick
-                    if sp > match_top and sp >= 8.0 and sp < 12.0:
-                        match_top = sp
-                        self.milestones.append({"t": fr.t, "player": pid, "kind": "top_speed", "value": round(sp, 1),
-                                                "x": x, "y": y})
-                    a["top"] = max(a["top"], sp)
+                    if sp >= 12.0:            # nobody runs 43 km/h: a repositioning between phases, not a run
+                        a["last"] = None
+                        sp = 0.0
+                    else:
+                        a["dist"] += step
+                        # top speed is the best one-second average, the way tracking providers report it;
+                        # a single half-second step is jitter
+                        last = a.get("last")
+                        sp1 = (sp + last) / 2 if last is not None else 0.0
+                        a["last"] = sp
+                        if sp1 > match_top and sp1 >= 8.0:
+                            match_top = sp1
+                            self.milestones.append({"t": fr.t, "player": pid, "kind": "top_speed", "value": round(sp1, 1),
+                                                    "x": x, "y": y})
+                        a["top"] = max(a["top"], sp1)
                     km = int(a["dist"] // 1000)
                     if km == 10 and km > a["km_flag"]:
                         a["km_flag"] = km
@@ -665,11 +674,17 @@ class MatchState:
 
     # ---------------------------------------------------------------- facts
     def _fact(self, key, params, value, evidence, tags=(), player=None, team=None, t=None) -> Fact:
-        from . import i18n
+        from . import i18n, units
         self._fact_n += 1
-        texts = i18n.all_langs(key, **params)
+        params = dict(params)
+        if "dist" in params:              # metres in the data, yards in English: the fact states both
+            params["dist"] = round(float(params["dist"]), 1)
+            params["yd"] = units.yards(params["dist"])
+        if key == "m_speed":
+            params["kmh"] = units.kmh(params["v"])
+        texts = i18n.all_langs(key, **{k: v for k, v in params.items() if k not in ("x", "y")})
         f = Fact(id=f"f{self._fact_n}", text=texts["en"], value=value, evidence=list(evidence)[:20],
-                 tags=list(tags), player=player, team=team, t=t, i18n=texts, key=key, params=dict(params))
+                 tags=list(tags), player=player, team=team, t=t, i18n=texts, key=key, params=params)
         self.facts.append(f)
         return f
 
@@ -726,10 +741,12 @@ class MatchState:
             d = m["detail"]
             nm = self.data.name_of(m["player"]) if m["player"] else None
             if m["kind"] == "goal":
-                self._fact("m_goal", dict(clock=mmss(m["t"]), name=nm, club=clubs[m["team"]], dist=d["distance"], xg=d["xg"]),
+                self._fact("m_goal", dict(clock=mmss(m["t"]), name=nm, club=clubs[m["team"]], dist=d["distance"], xg=d["xg"],
+                                          x=m["x"], y=m["y"]),
                            d["xg"], m["evidence"], ["moment", "goal"], player=m["player"], team=m["team"], t=m["t"])
             elif m["kind"] == "chance":
-                self._fact("m_chance", dict(clock=mmss(m["t"]), name=nm, dist=d["distance"], xg=d["xg"], outcome=d["outcome"]),
+                self._fact("m_chance", dict(clock=mmss(m["t"]), name=nm, dist=d["distance"], xg=d["xg"], outcome=d["outcome"],
+                                            x=m["x"], y=m["y"]),
                            d["xg"], m["evidence"], ["moment", "chance"], player=m["player"], team=m["team"], t=m["t"])
             elif m["kind"] == "key_pass":
                 self._fact("m_key_pass", dict(clock=mmss(m["t"]), name=nm, receiver=self.data.name_of(d["receiver"]), dist=d["distance"],
@@ -830,7 +847,7 @@ class MatchState:
 
     def overlay_items(self, lang_texts: dict[str, dict[str, str]] | None = None) -> list[dict]:
         """Timed, machine-readable overlay items from key moments, captions in every template language."""
-        from . import i18n
+        from . import i18n, units
         items = []
         for m in self.moments:
             nm = self.data.name_of(m["player"]) if m["player"] else None
@@ -841,10 +858,13 @@ class MatchState:
                 vi = 0 if d["xg"] < 0.15 else 1 if d["xg"] < 0.35 else 2
                 texts = i18n.all_langs("o_chance", name=nm, xg=d["xg"], verdict={lg: i18n.VERDICT[lg][vi] for lg in i18n.LANGS})
             elif m["kind"] == "key_pass":
-                texts = i18n.all_langs("o_key_pass", name=nm, receiver=self.data.name_of(d["receiver"]).split()[-1], dist=round(d["distance"]),
-                                       diff=d["difficulty"])
+                texts = i18n.all_langs("o_key_pass", name=nm, receiver=self.data.name_of(d["receiver"]).split()[-1],
+                                       dist={lg: units.dist_prose(d["distance"], lg) for lg in i18n.LANGS}, diff=d["difficulty"])
             elif m["kind"] == "milestone":
-                texts = i18n.all_langs("o_speed" if d["milestone"] == "top_speed" else "o_km", name=nm, v=d["value"])
+                if d["milestone"] == "top_speed":
+                    texts = i18n.all_langs("o_speed", name=nm, kmh=units.kmh(d["value"]))
+                else:
+                    texts = i18n.all_langs("o_km", name=nm, v=d["value"])
             elif m["kind"] == "stop":
                 texts = i18n.all_langs("o_stop", name=nm, act={lg: i18n.OVERLAY_ACT[lg][d["action"]] for lg in i18n.LANGS}, d=d["danger_stopped"])
             elif m["kind"] == "momentum_shift":

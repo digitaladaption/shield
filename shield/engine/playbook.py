@@ -10,7 +10,7 @@ FRIENDLY = {
     "passes_p90": "passes made", "pass_accuracy": "passes that found a teammate", "pass_difficulty": "difficulty of passes attempted",
     "progressive_passes_p90": "passes that moved the team forward", "passes_into_danger_p90": "passes into dangerous areas",
     "danger_created_p90": "danger created by passing", "carries_p90": "runs with the ball", "progressive_carries_p90": "runs forward with the ball",
-    "carry_m_p90": "metres carried", "shots_p90": "shots", "xg_p90": "quality of chances taken", "goals_p90": "goals",
+    "carry_m_p90": "ground covered on the ball", "shots_p90": "shots", "xg_p90": "quality of chances taken", "goals_p90": "goals",
     "interceptions_p90": "passes cut out", "tackles_won_p90": "tackles won", "tackle_success": "tackles that won the ball",
     "blocks_p90": "shots blocked", "pressures_p90": "times he closed down the ball carrier", "ball_recoveries_p90": "times he won the ball back",
     "threat_prevented_p90": "attacks stopped before they got dangerous", "xg_prevented_p90": "goals saved by stopping attacks",
@@ -27,12 +27,12 @@ METRIC_DRILLS = {
     "passes_into_danger_p90": ("Into the box", "From the wing, play 20 passes into a teammate arriving in the box. Vary the weight."),
     "danger_created_p90": ("Line breakers", "Three lines of cones. A pass only counts if it goes through a line to a teammate's feet."),
     "carries_p90": ("Take it on", "After your first touch, take two more touches forward before passing. Then release."),
-    "progressive_carries_p90": ("Drive the gate", "Dribble through a 2 m gate under pressure, then release. Count clean gates."),
+    "progressive_carries_p90": ("Drive the gate", "Dribble through a two-yard gate under pressure, then release. Count clean gates."),
     "shots_p90": ("Shoot on sight", "Inside the box, your first option is a shot. One touch to set, one to hit."),
     "xg_p90": ("Find the pocket", "Receive between two defenders on the edge of the box, turn and shoot inside 3 seconds."),
     "goals_p90": ("One-touch finish", "Service from both wings, finish first time. Track shots on target, not goals."),
     "interceptions_p90": ("Scan and step", "Coach points before each pass. Look over your shoulder, then step into the lane as the pass is played."),
-    "tackles_won_p90": ("Stay on your feet", "1v1 in a 10 m channel. Defender wins a point only for a tackle that keeps the ball."),
+    "tackles_won_p90": ("Stay on your feet", "1v1 in a ten-yard channel. Defender wins a point only for a tackle that keeps the ball."),
     "tackle_success": ("Time it", "1v1 slow-to-fast. Only tackle when the attacker's touch is heavy. Count clean wins."),
     "blocks_p90": ("Get in the way", "2v2 in the box. Defender must get a body part on every shot."),
     "pressures_p90": ("Trigger press", "Press only when the receiver's first touch goes backwards. Hold position otherwise."),
@@ -40,8 +40,8 @@ METRIC_DRILLS = {
     "threat_prevented_p90": ("Shadow the line", "In a 4v4, stay on the line between the ball and your own goal. Count passes you cut out."),
     "screening": ("Shield the keeper", "Defend without tackling: your only job is to stay between the ball and the goal for five minutes."),
     "distance_km": ("Box-to-box relay", "Sprint to the far box, play a one-two, recover to your own box. Six reps."),
-    "sprints": ("Repeat sprints", "Six 20 m sprints with a jog back. Keep the last one as fast as the first."),
-    "top_speed_ms": ("Flying 20s", "Build up over 10 m then sprint flat out for 20 m. Four reps, full rest."),
+    "sprints": ("Repeat sprints", "Six 20-yard sprints with a jog back. Keep the last one as fast as the first."),
+    "top_speed_ms": ("Flying 20s", "Build up over ten yards then sprint flat out for 20 yards. Four reps, full rest."),
     "time_to_release": ("Picture first", "Before the ball arrives, say out loud where it is going next. Then play it in two touches."),
 }
 
@@ -75,7 +75,7 @@ def build_playbook(st, pid: str) -> dict:
     arche = fp["archetype"]
     looks = []
     thinking = []
-    from . import i18n
+    from . import i18n, units
     from .i18n_ui import ARCH, LOOKS, TEMPO, VERB, WHY, ZONE, drill as drill_i18n
     LANGS = i18n.LANGS
 
@@ -156,15 +156,16 @@ def build_playbook(st, pid: str) -> dict:
         why = {}
         for lang in LANGS:
             if mm["kind"] == "goal":
-                why[lang] = WHY["goal"][lang].format(dist=round(d["distance"]), xg=d["xg"])
+                why[lang] = WHY["goal"][lang].format(where=units.shot_where(d["distance"], mm["x"], mm["y"], lang), xg=d["xg"])
             elif mm["kind"] == "chance":
-                why[lang] = WHY["chance"][lang].format(dist=round(d["distance"]), xg=d["xg"], outcome=i18n.word(d["outcome"], lang))
+                why[lang] = WHY["chance"][lang].format(where=units.shot_where(d["distance"], mm["x"], mm["y"], lang), xg=d["xg"],
+                                                       outcome=i18n.word(d["outcome"], lang))
             elif mm["kind"] == "stop":
                 cf = st.counterfactual(mm["evidence"][0])
                 why[lang] = WHY["stop"][lang].format(did=WHY["did"][lang][d["action"]], d=d["danger_stopped"],
                                                      pct=round(cf.get("shot_rate_from_here", 0) * 100))
             else:
-                why[lang] = WHY["key_pass"][lang].format(dist=round(d["distance"]), receiver=st.data.name_of(d["receiver"]).split()[-1],
+                why[lang] = WHY["key_pass"][lang].format(dist=units.dist_prose(d["distance"], lang), receiver=st.data.name_of(d["receiver"]).split()[-1],
                                                          d0=d["danger_before"], d1=d["danger_after"], diff=d["difficulty"])
         points.append({"kind": mm["kind"], "t": mm["t"], "minute": mm["minute"], "rank": mm["rank"], "why": why["en"], "why_i18n": why,
                        "evidence": mm["evidence"], "x": mm["x"], "y": mm["y"], "detail": d, "team": mm.get("team"), "player": pid,

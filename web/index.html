@@ -164,6 +164,11 @@ const pick=o=>o?(o[lang]??o.en??Object.values(o)[0]??''):'';
 const archLabel=k=>(B.archetypes[k]&&pick(B.archetypes[k].label_i18n))||(B.archetypes[k]||{}).label||k;
 const archOf=pid=>B.fingerprints[pid]?archLabel(B.fingerprints[pid].archetype):'';
 const drillName=n=>((B.drills_i18n||{})[n]||{})[lang]?.name||n;
+// units the way football says them: yards on the pitch in English, metres elsewhere, km/h for every speed (mirror of shield/engine/units.py)
+const YARD=0.9144;function yds(m){return Math.round(m/YARD)}
+function distP(m){if(lang==='en'){const y=yds(m);return y===1?'1 yard':`${y} yards`}const n=Math.round(m);return {es:`${n} metros`,de:`${n} Meter`,fr:`${n} mètres`}[lang]||`${n} m`}
+function distL(m){return lang==='en'?`${yds(m)} yds`:`${Math.round(m)} m`}
+function kmh(ms){return `${(ms*3.6).toFixed(1)} km/h`}
 function minutePhrase(sec){const m=Math.max(1,Math.floor(sec/60)+((sec%60)>0?1:0));const suf=lang==='en'?((m%100>=11&&m%100<=13)?'th':({1:'st',2:'nd',3:'rd'}[m%10]||'th')):'';let s=t('min_en',{n:m,suf});return s[0].toUpperCase()+s.slice(1)}
 const ptMoment=p=>({kind:p.kind,t:p.t,minute:p.minute,team:p.team,player:p.player,evidence:p.evidence,detail:p.detail,x:p.x,y:p.y,rank:p.rank,possession_id:p.possession_id});
 function applyChrome(){
@@ -230,7 +235,7 @@ function momentsVisible(){return B.moments.filter(m=>!liveOnly||m.t<=clock)}
 
 // ---------------- drawing
 const C=$('#pitch').getContext('2d'); const PW=1050,PH=680,PAD=25; const L=105,W=68;
-const sx=x=>PAD+x/L*(PW-2*PAD), sy=y=>PAD+y/W*(PH-2*PAD), cx=x=>Math.max(110,Math.min(PW-110,x));
+const sx=x=>PAD+x/L*(PW-2*PAD), sy=y=>PAD+y/W*(PH-2*PAD), cx=(x,txt)=>{const half=txt?C.measureText(txt).width/2+8:110;return Math.max(half,Math.min(PW-half,x))};
 function draw(){
   C.clearRect(0,0,PW,PH);
   for(let i=0;i<10;i++){C.fillStyle=i%2?'#335f46':'#2f5a41';C.fillRect(sx(i*10.5),0,(PW-2*PAD)/10+1,PH)}
@@ -256,7 +261,7 @@ function draw(){
     C.fillStyle=p.team==='home'?(p.role==='GK'?'#d9c27a':'#f3efe6'):(p.role==='GK'?'#9bb3d1':'#6f8fb8');C.fill();
     C.fillStyle=p.team==='home'?'#1a1408':'#0f1620';C.font='600 11px "Barlow Condensed"';C.textAlign='center';C.textBaseline='middle';C.fillText(p.number,sx(x),sy(y)+.5);
     if(isF){if(!(freeze&&freeze.moment.player===pid)){C.fillStyle='#f2b35b';C.font='600 13px "Barlow Condensed"';C.fillText(short(pid),sx(x),sy(y)-24)}}
-    else{const pr=frameAt(Math.max(0,clock-0.5));const [qx,qy]=pos(pr,pid);const sp=Math.hypot(x-qx,y-qy)/0.5;if(sp>=7.5&&sp<12){C.fillStyle='rgba(243,239,230,.9)';C.font='500 11px Barlow';C.fillText(`${short(pid)} ${sp.toFixed(1)} m/s`,sx(x),sy(y)-18)}}
+    else{const pr=frameAt(Math.max(0,clock-1));const [qx,qy]=pos(pr,pid);const sp=Math.hypot(x-qx,y-qy)/Math.max(0.5,Math.min(1,clock));if(sp>=7.5&&sp<12){C.fillStyle='rgba(243,239,230,.9)';C.font='500 11px Barlow';C.fillText(`${short(pid)} ${Math.round(sp*3.6)} km/h`,sx(x),sy(y)-18)}}
   }
   // ball
   C.beginPath();C.arc(sx(row[1]),sy(row[2]),6,0,7);C.fillStyle='#fff';C.fill();C.strokeStyle='#222';C.lineWidth=1.5;C.stroke();
@@ -273,11 +278,11 @@ function drawFreeze(row){
     C.strokeStyle='rgba(242,179,91,.95)';C.lineWidth=3;C.beginPath();C.moveTo(sx(e.x),sy(e.y));C.lineTo(sx(e.end_x),sy(e.end_y));C.stroke();
     C.beginPath();C.arc(sx(e.end_x),sy(e.end_y),14,0,7);C.strokeStyle='rgba(242,179,91,.9)';C.lineWidth=2;C.stroke();
     C.fillStyle='#f2b35b';C.font='600 13px "Barlow Condensed"';C.textAlign='center';
-    C.fillText(t('kp_lbl',{a:short(e.player),b:short(e.receiver),dist:e.distance,speed:e.speed,diff:e.difficulty}),cx(sx((e.x+e.end_x)/2)),Math.max(40,sy((e.y+e.end_y)/2)-18));
+    {const lbl=t('kp_lbl',{a:short(e.player),b:short(e.receiver),dist:distL(e.distance),speed:kmh(e.speed),diff:e.difficulty});C.fillText(lbl,cx(sx((e.x+e.end_x)/2),lbl),Math.max(40,sy((e.y+e.end_y)/2)-18));}
     C.fillText(t('danger_arrow',{a:e.danger_before,b:e.danger_intended}),cx(sx(e.end_x)),Math.min(PH-30,sy(e.end_y)+30));return}
   if(m.kind==='chance'||m.kind==='goal'){const e=B.events.find(x=>x.id===m.evidence[0]);if(!e)return;const gx=e.team==='home'?L:0;
     C.setLineDash([4,5]);C.strokeStyle=m.kind==='goal'?'rgba(242,179,91,.95)':'rgba(243,239,230,.8)';C.lineWidth=3;C.beginPath();C.moveTo(sx(e.x),sy(e.y));C.lineTo(sx(gx),sy(34));C.stroke();C.setLineDash([]);
-    C.fillStyle='#f2b35b';C.font='600 13px "Barlow Condensed"';C.textAlign='center';C.fillText(t('shot_lbl',{who:short(e.player),kind:m.kind==='goal'?t('GOAL'):t('shot'),dist:e.distance,xg:e.xg,speed:e.speed}),cx(sx(e.x)),sy(e.y)-26);return}
+    C.fillStyle='#f2b35b';C.font='600 13px "Barlow Condensed"';C.textAlign='center';{const lbl=t('shot_lbl',{who:short(e.player),kind:m.kind==='goal'?t('GOAL'):t('shot'),dist:distL(e.distance),xg:e.xg,speed:kmh(e.speed)});C.fillText(lbl,cx(sx(e.x),lbl),sy(e.y)-26)}return}
   if(m.kind!=='stop')return;
   const ev=B.events.find(e=>e.id===m.evidence[0]); if(!ev)return;
   const pid=ev.player; const [px,py]=pos(row,pid);
@@ -329,7 +334,7 @@ function renderPanel(){
     const mine=momentsVisible().filter(m=>m.team===club);
     const top=mine.find(m=>m.kind==='stop'&&m.detail.action==='interception')||mine.find(m=>m.kind==='stop');
     if(top)h+=`<h3>${t('miss_h',{club:clubs()[club]})}</h3><p>${t('miss_line',{min:minutePhrase(top.t),name:name(top.player),act:t('oa_'+top.detail.action),d:top.detail.danger_stopped})} <button data-jump="${top.rank}">${t('watch')}</button> ${top.detail.action==='interception'?`<button data-ghost="${top.rank}">${t('without')}</button>`:''}</p>`;
-    const kp=mine.find(m=>m.kind==='key_pass'); if(kp)h+=`<p>${t('kp_line2',{min:minutePhrase(kp.t),name:name(kp.player),receiver:short(kp.detail.receiver),dist:Math.round(kp.detail.distance)})} <button data-jump="${kp.rank}">${t('watch')}</button></p>`;
+    const kp=mine.find(m=>m.kind==='key_pass'); if(kp)h+=`<p>${t('kp_line2',{min:minutePhrase(kp.t),name:name(kp.player),receiver:short(kp.detail.receiver),dist:distP(kp.detail.distance)})} <button data-jump="${kp.rank}">${t('watch')}</button></p>`;
     const stoppers=Object.entries(B.players).filter(([id,p])=>p.team===club&&p.role!=='GK').sort((a,b)=>b[1].threat_prevented-a[1].threat_prevented).slice(0,3);
     h+=`<h3>${t('quiet_h',{club:clubs()[club]})}</h3><table>${stoppers.map(([id,p])=>`<tr><td>${p.name}<span class="pill">${archOf(id)}</span></td><td class="n">${B.possessions.filter(q=>q.ended_by===id).length} ${t('attacks_ended')}</td></tr>`).join('')}</table>`;
   }
@@ -438,13 +443,13 @@ function vision(tt,pid){const row=frameAt(tt);const m=meta(pid);const team=m.tea
     Object.assign(out,{view:'defender',carrier,closing,in_goal_wedge:inWedge,distance_to_ball_goal_line:Math.round(dline*10)/10,can_tackle:Math.hypot(x-bx,y-by)<=TACKLE_REACH,marking,marking_m:Math.round(md*10)/10,wedge:{ball:[bx,by],posts:[[gx,gy-POST],[gx,gy+POST]]}});
     const closed=closing.filter(c=>c.state==='closed');const bits=[];
     if(closed.length)bits.push(t('v_closing',{n:closed.length,s:closed.length!==1?t('v_s'):'',to:short(closed[0].to),d:closed[0].danger_if_arrives}));
-    bits.push(inWedge?t('v_wedge'):t('v_off',{m:Math.round(dline)}));
-    if(out.can_tackle)bits.push(t('v_tackle'));else if(out.dist_to_ball<8)bits.push(t('v_from_ball',{m:out.dist_to_ball}));
+    bits.push(inWedge?t('v_wedge'):t('v_off',{m:distP(dline)}));
+    if(out.can_tackle)bits.push(t('v_tackle'));else if(out.dist_to_ball<8)bits.push(t('v_from_ball',{m:distP(out.dist_to_ball)}));
     out.read=`${m.name}: ${bits.join(', ')}.`;return out}
   let space=99;for(const q of B.frames.ids){if(meta(q).team===team)continue;const [qx,qy]=pos(row,q);space=Math.min(space,Math.hypot(qx-x,qy-y))}
   Object.assign(out,{view:'attacker',space_m:Math.round(space*10)/10,danger_here:dangerAt(team,x,y,row)});
-  if(carrier&&carrier!==pid&&meta(carrier).team===team){out.lane_from_carrier=laneJS(row,carrier,pid);out.carrier=carrier;out.read=t('v_att',{name:m.name,state:t('s_'+out.lane_from_carrier.state),from:short(carrier),m:out.space_m,d:out.danger_here})}
-  else out.read=t('v_space',{name:m.name,m:out.space_m,d:out.danger_here});
+  if(carrier&&carrier!==pid&&meta(carrier).team===team){out.lane_from_carrier=laneJS(row,carrier,pid);out.carrier=carrier;out.read=t('v_att',{name:m.name,state:t('s_'+out.lane_from_carrier.state),from:short(carrier),m:distP(out.space_m),d:out.danger_here})}
+  else out.read=t('v_space',{name:m.name,m:distP(out.space_m),d:out.danger_here});
   return out}
 const laneColor={open:'rgba(123,201,160,.9)',contested:'rgba(242,179,91,.9)',blocked:'rgba(255,106,77,.9)',closed:'rgba(123,201,160,.95)'};
 function drawVision(v,row){const [x,y]=v.xy;
@@ -461,7 +466,7 @@ function drawVision(v,row){const [x,y]=v.xy;
     C.beginPath();C.arc(sx(x),sy(y),Math.min(v.space_m,12)/L*(PW-2*PAD),0,7);C.strokeStyle='rgba(243,239,230,.45)';C.lineWidth=1;C.setLineDash([3,4]);C.stroke();C.setLineDash([])}}
 function updateVbox(v){const b=$('#vbox');b.classList.toggle('right',v.xy[0]<L/2);let h=`<b>${v.read}</b>`;
   if(v.view==='carrier')h+=v.lanes.slice(0,4).map(l=>`<div class="opt"><i style="background:${laneColor[l.state]}"></i><span class="k">${short(l.to)}</span><span>${t('s_'+l.state)} · ${l.distance} m · ${t('difficulty')} ${l.difficulty} · ${t('danger').toLowerCase()} ${l.danger_now}→${l.danger_if_arrives}</span></div>`).join('');
-  else if(v.view==='defender')h+=v.closing.slice(0,3).map(c=>`<div class="opt"><i style="background:${c.state==='closed'?laneColor.blocked:laneColor.contested}"></i><span class="k">${short(c.to)}</span><span>${t('s_'+c.state)} · ${t('lane_m',{m:c.my_distance_to_lane})} · ${t('danger_arrives',{d:c.danger_if_arrives})}</span></div>`).join('')+(v.marking?`<div class="opt"><i style="background:rgba(243,239,230,.6)"></i><span class="k">${short(v.marking)}</span><span>${t('nearest_opp',{m:v.marking_m})}</span></div>`:'');
+  else if(v.view==='defender')h+=v.closing.slice(0,3).map(c=>`<div class="opt"><i style="background:${c.state==='closed'?laneColor.blocked:laneColor.contested}"></i><span class="k">${short(c.to)}</span><span>${t('s_'+c.state)} · ${t('lane_m',{m:distP(c.my_distance_to_lane)})} · ${t('danger_arrives',{d:c.danger_if_arrives})}</span></div>`).join('')+(v.marking?`<div class="opt"><i style="background:rgba(243,239,230,.6)"></i><span class="k">${short(v.marking)}</span><span>${t('nearest_opp',{m:distP(v.marking_m)})}</span></div>`:'');
   b.innerHTML=h;b.classList.add('show')}
 
 

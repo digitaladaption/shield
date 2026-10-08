@@ -66,6 +66,11 @@ def _fact_numbers(fact: dict) -> set[float]:
         nums.add(round(float(v), 0))
     elif isinstance(v, str):
         nums.update(_numbers_in(v))
+    # the fact's own parameters, which carry both units (metres and yards, m/s and km/h);
+    # coordinates are not something a sentence may quote
+    for k, pv in (fact.get("params") or {}).items():
+        if k not in ("x", "y") and isinstance(pv, (int, float)) and not isinstance(pv, bool):
+            nums.add(float(pv))
     # also allow rounded forms of every number in the text
     for n in list(nums):
         nums.add(round(n, 1))
@@ -108,8 +113,8 @@ def verify(narrative: str, facts: list[dict], roster_names: list[str] | None = N
         # numbers
         for n in _numbers_in(body):
             if allow_uncited_minutes and n <= 95 and (
-                    re.search(rf"\b{int(n)}(?:st|nd|rd|th|e|er|\.)?\s*(?:minute|min|Minute|minuto|')", body)
-                    or re.search(rf"(?:minute|minuto|Minute|min)\s*{int(n)}\b", body)):
+                    re.search(rf"\b{int(n)}(?:st|nd|rd|th|e|er|\.)?\s*(?:minute|min|minuto|')", body, re.I)
+                    or re.search(rf"(?:minute|minuto|min)\s*{int(n)}\b", body, re.I)):
                 continue
             if not _number_supported(n, pool):
                 problems.append(f"number {n:g} not in cited facts")
