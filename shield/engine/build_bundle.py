@@ -73,14 +73,15 @@ async def stories_for(match_path: str, st, data, players: list[str]) -> dict:
     wf, backend = build_workflow(match_path, use_mcp_tool=False)
     roster = [p["name"] for p in data.meta["players"]]
     out = {"backend": backend, "items": {}}
-    langs = ["en"] if backend == "local" else ["en", "es", "de"]
+    langs = ["en", "es", "de", "fr"]          # template languages; a model adds free prose and more languages
     jobs = []
     for mode in ("analyst", "casual"):
         for lang in langs:
             jobs.append((mode, lang, None))
     for pid in players:
         for mode in ("player", "kid"):
-            jobs.append((mode, "en", pid))
+            for lang in langs:
+                jobs.append((mode, lang, pid))
     for mode, lang, pid in jobs:
         packet = st.fact_packet(player_focus=pid)
         req = NarrateRequest(packet=packet, mode=mode, language=lang, player_focus=pid, roster=roster)

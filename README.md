@@ -63,7 +63,7 @@ Enter a kid's simple match stats and it finds the archetype whose *shape* they r
 | Narratives, milestones, recaps | Narrator agent from the fact packet; Fan, Analyst and Player focus modes |
 | Explainability: control vs chaos, pressure, rhythm | 5-minute momentum windows with a regime label and pressure counts; every fact carries event IDs; the Verifier rejects anything unsupported |
 | Data innovation | the generator, with a planted archetype and a control run |
-| Multi-language | Personalizer agent; needs a Foundry model endpoint |
+| Multi-language | every fact and caption templated in en/es/de/fr with no model; the Personalizer agent on Foundry for free prose in any language |
 | Favourite club, favourite player, player-focused mode | Fan mode has a club selector; Player focus and idol modes follow one player |
 
 ## Microsoft technologies
@@ -76,7 +76,7 @@ Enter a kid's simple match stats and it finds the archetype whose *shape* they r
 | Hosting | FastAPI app in a container for **Azure Container Apps** |
 | Build | GitHub Copilot used during development |
 
-With no model endpoint configured, a local template narrator runs through the same workflow and verifier, so the demo always works. The UI says which path produced each story.
+With no model endpoint configured, a template narrator runs through the same workflow and verifier, so the demo always works. Every fact is rendered from a template in English, Spanish, German and French (`shield/engine/i18n.py`), so the template stories and the on-pitch captions come out in all four; the page says plainly when a language is not in the build. A Foundry model writes free prose in any language from the same facts. The UI says which path produced each story.
 
 ## Run it
 

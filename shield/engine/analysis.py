@@ -51,10 +51,11 @@ class Fact:
     player: str | None = None
     team: str | None = None
     t: float | None = None
+    i18n: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {"id": self.id, "text": self.text, "value": self.value, "evidence": self.evidence,
-                "tags": self.tags, "player": self.player, "team": self.team, "t": self.t}
+                "tags": self.tags, "player": self.player, "team": self.team, "t": self.t, "i18n": self.i18n}
 
 
 # --------------------------------------------------------------------------- helpers
@@ -660,10 +661,12 @@ class MatchState:
         return dict(sorted(out.items(), key=lambda kv: -kv[1]))
 
     # ---------------------------------------------------------------- facts
-    def _fact(self, text, value, evidence, tags=(), player=None, team=None, t=None) -> Fact:
+    def _fact(self, key, params, value, evidence, tags=(), player=None, team=None, t=None) -> Fact:
+        from . import i18n
         self._fact_n += 1
-        f = Fact(id=f"f{self._fact_n}", text=text, value=value, evidence=list(evidence)[:20],
-                 tags=list(tags), player=player, team=team, t=t)
+        texts = i18n.all_langs(key, **params)
+        f = Fact(id=f"f{self._fact_n}", text=texts["en"], value=value, evidence=list(evidence)[:20],
+                 tags=list(tags), player=player, team=team, t=t, i18n=texts)
         self.facts.append(f)
         return f
 
@@ -671,12 +674,12 @@ class MatchState:
         clubs = self.data.clubs
         h, a = self.team_stats["home"], self.team_stats["away"]
         goals_ev = [e["id"] for e in self.events if e["type"] == "shot" and e["outcome"] == "goal"]
-        self._fact(f"Score at {mmss(self.t_end)}: {clubs['home']} {h['goals']}, {clubs['away']} {a['goals']}",
+        self._fact("score", dict(clock=mmss(self.t_end), home=clubs["home"], hg=h["goals"], away=clubs["away"], ag=a["goals"]),
                    f"{h['goals']}-{a['goals']}", goals_ev, ["score"])
         for team, ts in (("home", h), ("away", a)):
             shots_ev = [e["id"] for e in self.events if e["type"] == "shot" and e["team"] == team]
-            self._fact(f"{ts['club']}: {ts['shots']} shots, {ts['xg']} xG", ts["xg"], shots_ev, ["shots"], team=team)
-            self._fact(f"{ts['club']}: {round(ts['possession']*100)}% possession, {ts['passes']} passes at {round(ts['pass_accuracy']*100)}% accuracy",
+            self._fact("team_shots", dict(club=ts["club"], shots=ts["shots"], xg=ts["xg"]), ts["xg"], shots_ev, ["shots"], team=team)
+            self._fact("team_poss", dict(club=ts["club"], poss=round(ts["possession"] * 100), passes=ts["passes"], acc=round(ts["pass_accuracy"] * 100)),
                        round(ts["possession"] * 100), [], ["possession"], team=team)
         # top performers
         for pid, s in self.player_stats.items():
@@ -684,68 +687,68 @@ class MatchState:
                 continue
             nm = s["name"]
             if s["interceptions"] >= 3:
-                self._fact(f"{nm} made {s['interceptions']} interceptions", s["interceptions"],
+                self._fact("interceptions", dict(name=nm, n=s["interceptions"]), s["interceptions"],
                            s["evidence"]["interceptions"], ["defence", "interceptions"], player=pid, team=s["team"])
             if s["threat_prevented"] >= 0.8:
                 tp_ev = [r["event_id"] for r in self.threat_prevented if r["player"] == pid]
-                self._fact(f"{nm} prevented {round(s['threat_prevented'], 2)} threat (sum of danger stopped) and about {round(s['xg_prevented'], 2)} xG",
+                self._fact("threat_prevented", dict(name=nm, tp=round(s["threat_prevented"], 2), xgp=round(s["xg_prevented"], 2)),
                            round(s["threat_prevented"], 2), tp_ev, ["defence", "threat_prevented"], player=pid, team=s["team"])
-                ended = self.team_stats["away" if s["team"] == "home" else "home"]  # not used
                 n_ended = sum(1 for p in self.possessions if p.ended_by == pid)
                 if n_ended:
-                    self._fact(f"{nm} ended {n_ended} opposition attacks", n_ended,
+                    self._fact("attacks_ended", dict(name=nm, n=n_ended), n_ended,
                                [p.end_event_id for p in self.possessions if p.ended_by == pid][:20],
                                ["defence", "attacks_ended"], player=pid, team=s["team"])
             if s["goals"]:
-                self._fact(f"{nm} scored {s['goals']}", s["goals"], s["evidence"]["goals"], ["attack", "goals"], player=pid, team=s["team"])
+                self._fact("goals", dict(name=nm, n=s["goals"]), s["goals"], s["evidence"]["goals"], ["attack", "goals"], player=pid, team=s["team"])
             if s["xg"] >= 0.4:
-                self._fact(f"{nm}: {s['shots']} shots worth {round(s['xg'], 2)} xG", round(s["xg"], 2),
+                self._fact("shots", dict(name=nm, shots=s["shots"], xg=round(s["xg"], 2)), round(s["xg"], 2),
                            s["evidence"]["shots"], ["attack", "shots"], player=pid, team=s["team"])
             if s["danger_created"] >= 1.0:
-                self._fact(f"{nm} created {round(s['danger_created'], 2)} danger with his passing ({s['progressive_passes']} progressive passes)",
+                self._fact("creation", dict(name=nm, dc=round(s["danger_created"], 2), pp=s["progressive_passes"]),
                            round(s["danger_created"], 2), s["evidence"]["progressive_passes"], ["attack", "creation"], player=pid, team=s["team"])
             if s["passes"] >= 25 and s["pass_difficulty"]:
                 diff = round(statistics.mean(s["pass_difficulty"]), 0)
                 acc = round(100 * s["passes_complete"] / s["passes"])
                 if diff >= 38 or acc >= 90:
-                    self._fact(f"{nm} completed {acc}% of {s['passes']} passes at an average difficulty of {int(diff)} out of 100",
+                    self._fact("pass_quality", dict(name=nm, acc=acc, passes=s["passes"], diff=int(diff)),
                                acc, s["evidence"]["progressive_passes"][:10], ["attack", "pass_quality"], player=pid, team=s["team"])
             if s.get("distance_km", 0) >= 11.5:
-                self._fact(f"{nm} covered {s['distance_km']} km with {s['sprints']} sprints", s["distance_km"], [],
+                self._fact("physical", dict(name=nm, km=s["distance_km"], sprints=s["sprints"]), s["distance_km"], [],
                            ["physical"], player=pid, team=s["team"])
             if s.get("screening", 0) >= 0.3 and s["role"] in ("CDM", "LCM", "RCM"):
-                self._fact(f"{nm} was screening the line between ball and his own goal for {round(s['screening']*100)}% of defending time",
+                self._fact("positioning", dict(name=nm, pct=round(s["screening"] * 100)),
                            round(s["screening"] * 100), [], ["defence", "positioning"], player=pid, team=s["team"])
         # moments
         for m in self.moments[:12]:
             d = m["detail"]
             nm = self.data.name_of(m["player"]) if m["player"] else None
             if m["kind"] == "goal":
-                self._fact(f"GOAL {mmss(m['t'])}: {nm} ({clubs[m['team']]}) scored from {d['distance']} m, xG {d['xg']}",
+                self._fact("m_goal", dict(clock=mmss(m["t"]), name=nm, club=clubs[m["team"]], dist=d["distance"], xg=d["xg"]),
                            d["xg"], m["evidence"], ["moment", "goal"], player=m["player"], team=m["team"], t=m["t"])
             elif m["kind"] == "chance":
-                self._fact(f"Chance {mmss(m['t'])}: {nm} shot from {d['distance']} m, xG {d['xg']}, {d['outcome'].replace('_', ' ')}",
+                self._fact("m_chance", dict(clock=mmss(m["t"]), name=nm, dist=d["distance"], xg=d["xg"], outcome=d["outcome"]),
                            d["xg"], m["evidence"], ["moment", "chance"], player=m["player"], team=m["team"], t=m["t"])
             elif m["kind"] == "key_pass":
-                self._fact(f"Key pass {mmss(m['t'])}: {nm} found {self.data.name_of(d['receiver'])} with a {d['distance']} m pass, danger {d['danger_before']} to {d['danger_after']}, difficulty {d['difficulty']}",
+                self._fact("m_key_pass", dict(clock=mmss(m["t"]), name=nm, receiver=self.data.name_of(d["receiver"]), dist=d["distance"],
+                                              d0=d["danger_before"], d1=d["danger_after"], diff=d["difficulty"]),
                            d["danger_gain"], m["evidence"], ["moment", "key_pass"], player=m["player"], team=m["team"], t=m["t"])
             elif m["kind"] == "milestone":
-                what = f"hit {d['value']} m/s, the fastest sprint of the match so far" if d["milestone"] == "top_speed" else f"passed {d['value']} km covered"
-                self._fact(f"{mmss(m['t'])}: {nm} {what}", d["value"], [], ["moment", "physical"], player=m["player"], team=m["team"], t=m["t"])
+                self._fact("m_speed" if d["milestone"] == "top_speed" else "m_km", dict(clock=mmss(m["t"]), name=nm, v=d["value"]),
+                           d["value"], [], ["moment", "physical"], player=m["player"], team=m["team"], t=m["t"])
             elif m["kind"] == "stop":
-                self._fact(f"Stop {mmss(m['t'])}: {nm} {d['action']} with danger {d['danger_stopped']} stopped, about {d['xg_prevented']} xG prevented",
+                self._fact("m_stop", dict(clock=mmss(m["t"]), name=nm, action=d["action"], d=d["danger_stopped"], xgp=d["xg_prevented"]),
                            d["danger_stopped"], m["evidence"], ["moment", "stop"], player=m["player"], team=m["team"], t=m["t"])
             elif m["kind"] == "momentum_shift":
-                self._fact(f"Momentum shift in {d['window']}: {clubs[m['team']]} took over, home danger share {d['previous_home_share']} to {d['home_share']}",
+                self._fact("m_momentum", dict(window=d["window"], club=clubs[m["team"]], prev=d["previous_home_share"], now=d["home_share"]),
                            d["home_share"], m["evidence"], ["moment", "momentum"], team=m["team"], t=m["t"])
             elif m["kind"] == "chaos":
-                self._fact(f"Chaos spell {d['window']}: {d['possession_changes']} possession changes, {d['chaos_per_min']} per minute",
+                self._fact("m_chaos", dict(window=d["window"], n=d["possession_changes"], rate=d["chaos_per_min"]),
                            d["possession_changes"], m["evidence"], ["moment", "chaos"], t=m["t"])
         # regimes
         regimes = [r["regime"] for r in self.momentum]
         if regimes:
-            self._fact(f"Match rhythm: {regimes.count('control')} control windows, {regimes.count('chaos')} chaos windows, "
-                       f"{regimes.count('balanced')} balanced (5-minute windows)", regimes.count("chaos"), [], ["rhythm"])
+            self._fact("rhythm", dict(c=regimes.count("control"), k=regimes.count("chaos"), b=regimes.count("balanced")),
+                       regimes.count("chaos"), [], ["rhythm"])
 
     # ---------------------------------------------------------------- packets
     def fact_packet(self, player_focus: str | None = None, window: tuple[float, float] | None = None,
@@ -823,28 +826,30 @@ class MatchState:
         return out
 
     def overlay_items(self, lang_texts: dict[str, dict[str, str]] | None = None) -> list[dict]:
-        """Timed, machine-readable overlay items from key moments."""
+        """Timed, machine-readable overlay items from key moments, captions in every template language."""
+        from . import i18n
         items = []
         for m in self.moments:
             nm = self.data.name_of(m["player"]) if m["player"] else None
             d = m["detail"]
             if m["kind"] == "goal":
-                text = f"GOAL {nm} (xG {d['xg']})"
+                texts = i18n.all_langs("o_goal", name=nm, xg=d["xg"])
             elif m["kind"] == "chance":
-                text = f"{nm} shot, xG {d['xg']}, {d['shot_speed']} m/s"
+                texts = i18n.all_langs("o_chance", name=nm, xg=d["xg"], speed=d["shot_speed"])
             elif m["kind"] == "key_pass":
-                text = f"{nm} key pass to {self.data.name_of(d['receiver'])}: {d['distance']} m at {d['pass_speed']} m/s, difficulty {d['difficulty']}"
+                texts = i18n.all_langs("o_key_pass", name=nm, receiver=self.data.name_of(d["receiver"]), dist=d["distance"],
+                                       speed=d["pass_speed"], diff=d["difficulty"])
             elif m["kind"] == "milestone":
-                text = f"{nm} {d['value']} m/s, fastest of the match" if d["milestone"] == "top_speed" else f"{nm} {d['value']} km covered"
+                texts = i18n.all_langs("o_speed" if d["milestone"] == "top_speed" else "o_km", name=nm, v=d["value"])
             elif m["kind"] == "stop":
-                text = f"{nm} {d['action']}: danger {d['danger_stopped']} stopped"
+                texts = i18n.all_langs("o_stop", name=nm, action=d["action"], d=d["danger_stopped"])
             elif m["kind"] == "momentum_shift":
-                text = f"Momentum: {self.data.clubs[m['team']]}"
+                texts = i18n.all_langs("o_momentum", club=self.data.clubs[m["team"]])
             else:
-                text = f"Chaos: {d['possession_changes']} turnovers in 5 min"
+                texts = i18n.all_langs("o_chaos", n=d["possession_changes"])
             items.append({"t_start": round(m["t"], 1), "t_end": round(m["t"] + 6.0, 1), "kind": m["kind"],
                           "player": m["player"], "team": m["team"], "rank": m["rank"],
-                          "text": {"en": text, **((lang_texts or {}).get(str(m["rank"]), {}))},
+                          "text": {**texts, **((lang_texts or {}).get(str(m["rank"]), {}))},
                           "evidence": m["evidence"], "x": m.get("x"), "y": m.get("y")})
         items.sort(key=lambda i: i["t_start"])
         return items

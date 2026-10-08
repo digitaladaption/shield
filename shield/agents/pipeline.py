@@ -154,14 +154,18 @@ Return only the rewritten text."""
 # ----------------------------------------------------------------------------- local narrator
 def local_narrate(req: NarrateRequest) -> str:
     """Template narrator used when no model is configured. Cites facts so the
-    verifier treats it exactly like the model's output."""
+    verifier treats it exactly like the model's output. Renders in any of the
+    template languages (en, es, de, fr); other languages fall back to English."""
+    from shield.engine import i18n
+    lang = req.language if req.language in i18n.LANGS else "en"
     facts = req.packet["facts"]
+    txt = lambda f: (f.get("i18n") or {}).get(lang) or f["text"]
     by_tag = lambda tag: [f for f in facts if tag in f["tags"]]
-    pk = req.packet["match"]
+    he = {"en": "He", "es": "Él", "de": "Er", "fr": "Il"}[lang]
     out = []
     score = by_tag("score")
     if score:
-        out.append(f"{score[0]['text']} [{score[0]['id']}].")
+        out.append(f"{txt(score[0])} [{score[0]['id']}].")
     focus = req.player_focus
     pf = [f for f in facts if f.get("player") == focus] if focus else []
     if req.mode in ("player", "kid") and pf:
@@ -170,26 +174,27 @@ def local_narrate(req: NarrateRequest) -> str:
         if req.mode == "kid":
             out = []
         for i, f in enumerate(pf[:4]):
-            txt = f["text"] if i == 0 else f["text"].replace(nm, "He", 1)
-            out.append(f"{txt} [{f['id']}].")
-        nm = nm.split()[-1] if req.mode == "kid" else nm
+            t = txt(f) if i == 0 else txt(f).replace(nm, he, 1)
+            out.append(f"{t} [{f['id']}].")
+        short = nm.split()[-1] if req.mode == "kid" else nm
         if req.mode == "kid" and fp:
             hht = fp.get("how_he_thinks", {})
             faw = hht.get("first_action_after_winning_ball", {})
             if faw:
                 top = max(faw.items(), key=lambda kv: kv[1])
-                out.append(f"How {nm} thinks: after winning the ball his first action is usually to go {top[0]} [{pf[0]['id']}].")
+                out.append(i18n.render("thinks", lang, name=short, dir=i18n.T["dir"][lang].get(top[0], top[0])) + f" [{pf[0]['id']}].")
             strengths = fp.get("strengths", [])
             weak = fp.get("weaknesses", [])
+            pretty = lambda m: i18n.metric(m, lang)
             if strengths:
-                out.append(f"Best attribute: {strengths[0]['metric'].replace('_p90','').replace('_',' ')} [{pf[0]['id']}].")
+                out.append(i18n.render("best", lang, m=pretty(strengths[0]["metric"])) + f" [{pf[0]['id']}].")
             if weak:
-                out.append(f"One thing to work on: {weak[0]['metric'].replace('_p90','').replace('_',' ')} [{pf[0]['id']}].")
-            out.append(f"Drill to try: shadow the line between the ball and your own goal for five minutes of a small-sided game [{pf[0]['id']}].")
+                out.append(i18n.render("work", lang, m=pretty(weak[0]["metric"])) + f" [{pf[0]['id']}].")
+            out.append(i18n.render("drill", lang) + f" [{pf[0]['id']}].")
     elif req.mode == "overlay":
         m = by_tag("moment")
         if m:
-            return f"{m[0]['text']} [{m[0]['id']}]."
+            return f"{txt(m[0])} [{m[0]['id']}]."
     else:
         n = 7 if req.mode == "analyst" else 3
         moments = by_tag("moment")[: 2 if req.mode == "casual" else 4]
@@ -203,12 +208,13 @@ def local_narrate(req: NarrateRequest) -> str:
         for f in moments + players:
             if len(out) >= n:
                 break
-            out.append(f"{f['text']} [{f['id']}].")
+            out.append(f"{txt(f)} [{f['id']}].")
         if req.mode == "casual":
             tps = [f for f in facts if "threat_prevented" in f["tags"]]
             stop = max(tps, key=lambda f: f["value"]) if tps else None
             if stop:
-                out.append(f"Why it matters: the goals get the replays, but {stop['text'].split(' prevented')[0]} was ending attacks before they started [{stop['id']}].")
+                nm = stop["text"].split(" prevented")[0]
+                out.append(i18n.render("why", lang, name=nm) + f" [{stop['id']}].")
     return " ".join(out) if out else "No facts yet. [f0]"
 
 

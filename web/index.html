@@ -244,9 +244,9 @@ function draw(){
   // caption
   const cap=$('#caption');
   if(feed){const it=feedItem&&feedItem.t_start<=clock&&clock<=feedItem.t_end?feedItem:null;
-    if(it){cap.innerHTML=`${it.caption||it.text.en}<small>${it.kind.replace('_',' ')} · engine ${it.engine_latency_ms} ms${it.narration_latency_ms!=null?` · caption ${it.narration_latency_ms} ms (${it.caption_backend||'local'})`:''} · evidence ${it.evidence.slice(0,2).join(', ')}</small>`;cap.classList.add('show')}else cap.classList.remove('show');return}
+    if(it){cap.innerHTML=`${it.caption||it.text[lang]||it.text.en}<small>${it.kind.replace('_',' ')} · engine ${it.engine_latency_ms} ms${it.narration_latency_ms!=null?` · caption ${it.narration_latency_ms} ms (${it.caption_backend||'local'})`:''} · evidence ${it.evidence.slice(0,2).join(', ')}</small>`;cap.classList.add('show')}else cap.classList.remove('show');return}
   const item=B.overlay.find(o=>o.t_start<=clock&&clock<=o.t_end&&(!liveOnly||o.t_start<=clock));
-  if(item){cap.innerHTML=`${item.text.en}<small>${item.kind.replace('_',' ')} · rank ${item.rank} · evidence ${item.evidence.slice(0,2).join(', ')}</small>`;cap.classList.add('show')}else cap.classList.remove('show');
+  if(item){cap.innerHTML=`${item.text[lang]||item.text.en}<small>${item.kind.replace('_',' ')} · rank ${item.rank} · evidence ${item.evidence.slice(0,2).join(', ')}</small>`;cap.classList.add('show')}else cap.classList.remove('show');
 }
 function drawFreeze(row){
   const m=freeze.moment;
@@ -289,16 +289,19 @@ function updateTicks(){const s=Math.floor(clock);if(s===lastTickSec)return;lastT
 function jumpTo(m,ghost=false){playing=false;$('#play').textContent='Play';clock=m.t;if(m.kind==='key_pass'){const e=B.events.find(x=>x.id===m.evidence[0]);if(e&&e.t_start!=null)clock=e.t_start}freeze={moment:m,ghost:ghost?0:null};renderPanel()}
 
 // ---------------- panel
-function storyFor(md,pid){const it=B.stories.items;return it[`${md}|${lang}|${pid||''}`]||it[`${md}|en|${pid||''}`]||null}
+function storyFor(md,pid){const it=B.stories.items;return it[`${md}|${lang}|${pid||''}`]||null}
+function storyFallback(md,pid){const it=B.stories.items;return it[`${md}|en|${pid||''}`]||null}
 function factsHtml(story){if(!story)return'';const used=story.facts_used||[];
   return `<button class="why" data-toggle="facts">Why? Show the ${used.length} facts behind this</button> <button class="why" data-toggle="trace">How the agents wrote it</button><div class="facts">${used.map(f=>`<div><code>${f.id}</code><span>${f.text}</span>${f.evidence.length?`<button data-ev="${f.evidence[0]}">see ${f.evidence[0]}</button>`:''}</div>`).join('')}</div>${traceHtml(story)}`}
 function traceHtml(s){if(!s.trace||!s.trace.length)return'';return `<div class="trace">${s.trace.map(t=>{let body='';if(t.agent==='Verifier'||t.agent==='Final check'){body=`<span class="v ${t.verdict.startsWith('accepted')?'':'no'}">${t.verdict}</span> · ${t.kept} kept, ${t.rejected} rejected`+(t.problems&&t.problems.length?`<div class="txt">${t.problems.map(p=>`<span class="bad">${p.text}</span> <span class="what">${p.problems.join('; ')}</span>`).join('<br>')}</div>`:'')}else if(t.text){body=`<div class="txt">${t.text.replace(/\[f\d+(?:,\s*f\d+)*\]/g,m=>`<span class="what">${m}</span>`)}</div>`}else body=`<span class="what">${t.step}</span>`;return `<div class="tstep"><div class="who">${t.agent}<small>${t.step} · ${t.ms} ms${t.backend?' · '+t.backend:''}</small></div><div>${body}</div></div>`}).join('')}</div>`}
-function storyBlock(md,pid){const s=storyFor(md,pid);if(!s)return'<p class="why">No story for this view yet.</p>';
+function storyBlock(md,pid){let s=storyFor(md,pid);let miss='';if(!s){s=storyFallback(md,pid);miss=`<p class="note" style="margin:0 0 8px;border:0;padding:0;color:var(--amber)">${LANGNAME[lang]} is not in this build. The template narrator covers English, Spanish, German and French; a Microsoft Foundry model covers any language. Showing English.</p>`}if(!s)return'<p class="why">No story for this view yet.</p>';
   const t=s.text.split(/(?<=\.)\s+/).map(x=>`<p>${x}</p>`).join('');
+  if(miss)return miss+`<div class="story">${t}</div>`;
   const ft=(liveOnly&&clock<B.clock-1)?'<span class="pill">full-time story</span>':'';
   return `<div class="story">${t}</div><div class="why">${ft} Verified: ${s.verification.sentences.filter(x=>x.ok).length} sentences kept, ${s.verification.rejected} rejected · ${s.backend==='local'?'local narrator':'Microsoft Foundry'}${s.attempts>1?` · ${s.attempts} drafts`:''}</div>${factsHtml(s)}`}
-function langSelect(){return `<select id="lang">${['en','es','de','fr','pt','ja','th'].map(l=>`<option value="${l}" ${l===lang?'selected':''}>${{en:'English',es:'Español',de:'Deutsch',fr:'Français',pt:'Português',ja:'日本語',th:'ไทย'}[l]}</option>`).join('')}</select>`}
-function langNote(){if(B.stories.backend==='local')return`<p class="note">Stories in this build came from the local narrator (English). Point the pipeline at a Microsoft Foundry model and the same verified facts come out in any language.</p>`;return''}
+const LANGNAME={en:'English',es:'Español',de:'Deutsch',fr:'Français',pt:'Português',ja:'日本語',th:'ไทย'};
+function langSelect(){return `<select id="lang">${Object.keys(LANGNAME).map(l=>`<option value="${l}" ${l===lang?'selected':''}>${LANGNAME[l]}</option>`).join('')}</select>`}
+function langNote(){if(B.stories.backend==='local')return`<p class="note">Stories in this build came from the template narrator (English, Spanish, German, French), through the same Verifier. A Microsoft Foundry model writes free prose in any language from the same facts.</p>`;return''}
 function playerSelect(){return `<select id="focus">${B.meta.players.filter(p=>p.role!=='GK').map(p=>`<option value="${p.id}" ${p.id===focus?'selected':''}>${p.name} · ${clubs()[p.team]}</option>`).join('')}</select>`}
 
 function renderPanel(){

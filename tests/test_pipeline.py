@@ -93,3 +93,14 @@ def test_local_mode_always_verifies(packet):
         text = pl.local_narrate(req)
         rep = pl.verify(text, pk["facts"], roster)
         assert rep.ok, (mode, rep.feedback())
+
+
+def test_template_languages_verify(packet):
+    pk, roster = packet
+    for lang in ("es", "de", "fr"):
+        for mode in ("casual", "analyst", "kid"):
+            req = pl.NarrateRequest(packet=pk, mode=mode, language=lang, player_focus="H06", roster=roster)
+            text = pl.local_narrate(req)
+            rep = pl.verify(text, pk["facts"], roster)
+            assert rep.ok, (lang, mode, rep.feedback())
+            assert text != pl.local_narrate(pl.NarrateRequest(packet=pk, mode=mode, language="en", player_focus="H06", roster=roster))
