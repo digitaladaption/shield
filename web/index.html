@@ -125,6 +125,7 @@
     <span class="pill" id="feedStatus" hidden></span>
   </div>
   <nav class="tabs" aria-label="Viewing mode">
+    <select id="lang" aria-label="Language"></select>
     <button data-mode="casual" class="on">Fan</button>
     <button data-mode="analyst">Analyst</button>
     <button data-mode="player">Player focus</button>
@@ -141,7 +142,7 @@
     <div class="tourcap" id="tourcap"></div>
     <input class="scrub" type="range" id="scrub" min="0" max="5399" value="0" aria-label="Match clock">
     <div class="timeline" id="timeline"></div>
-    <div class="legend"><span><i style="background:var(--amber)"></i>goal</span><span><i style="background:var(--home);opacity:.7"></i>chance</span><span><i style="background:var(--ok)"></i>attack stopped</span><span><i style="border:2px solid var(--amber)"></i>key pass</span><span><i style="border:1px solid var(--mute)"></i>momentum / chaos</span></div>
+    <div class="legend" id="legend"></div>
   </section>
   <aside class="panel" id="panel"><div class="loading">Loading match…</div></aside>
 </main>
@@ -156,13 +157,30 @@ const name=pid=>B.meta.players.find(p=>p.id===pid)?.name||pid;
 const short=pid=>{const n=name(pid).split(' ');return n[n.length-1]};
 const teamOf=pid=>B.meta.players.find(p=>p.id===pid)?.team;
 const clubs=()=>B.meta.clubs;
+const LANGNAME={en:'English',es:'Español',de:'Deutsch',fr:'Français',pt:'Português',ja:'日本語',th:'ไทย'};
+const TEMPLATE_LANGS=['en','es','de','fr'];
+function t(k,p){const d=(B.ui&&(B.ui[lang]||B.ui.en))||{};let s=d[k]??(B.ui&&B.ui.en?B.ui.en[k]:undefined)??k;if(p)for(const [a,b] of Object.entries(p))s=s.split('{'+a+'}').join(b);return s}
+const pick=o=>o?(o[lang]??o.en??Object.values(o)[0]??''):'';
+const archLabel=k=>(B.archetypes[k]&&pick(B.archetypes[k].label_i18n))||(B.archetypes[k]||{}).label||k;
+const archOf=pid=>B.fingerprints[pid]?archLabel(B.fingerprints[pid].archetype):'';
+const drillName=n=>((B.drills_i18n||{})[n]||{})[lang]?.name||n;
+const ptMoment=p=>({kind:p.kind,t:p.t,minute:p.minute,team:p.team,player:p.player,evidence:p.evidence,detail:p.detail,x:p.x,y:p.y,rank:p.rank,possession_id:p.possession_id});
+function applyChrome(){
+  $('#play').textContent=playing?t('pause'):t('play');$('#live').textContent=t('live');$('#live').title=t('live_title');$('#feed').textContent=t('feed');$('#feed').title=t('feed_title');
+  $('#see').textContent=t('see');$('#see').title=t('see_title');$('#tour').textContent=t('tour');$('#tour').title=t('tour_title');
+  const tabs={casual:'tab_fan',analyst:'tab_analyst',player:'tab_player',kid:'tab_kid'};document.querySelectorAll('.tabs button').forEach(b=>b.textContent=t(tabs[b.dataset.mode]));
+  $('#legend').innerHTML=`<span><i style="background:var(--amber)"></i>${t('lg_goal')}</span><span><i style="background:var(--home);opacity:.7"></i>${t('lg_chance')}</span><span><i style="background:var(--ok)"></i>${t('lg_stop')}</span><span><i style="border:2px solid var(--amber)"></i>${t('lg_key_pass')}</span><span><i style="border:1px solid var(--mute)"></i>${t('lg_mom')}</span>`;
+  const ls=$('#lang');ls.innerHTML=Object.keys(LANGNAME).map(l=>`<option value="${l}" ${l===lang?'selected':''}>${LANGNAME[l]}</option>`).join('');
+}
 
 fetch('data/bundle.json').then(r=>r.json()).then(b=>{B=b;init()});
 
 function init(){
   $('#homeName').textContent=clubs().home; $('#awayName').textContent=clubs().away;
-  buildTimeline();
-  $('#play').onclick=()=>{playing=!playing;$('#play').textContent=playing?'Pause':'Play';if(playing)freeze=null;};
+  try{const sv=localStorage.getItem('shield.lang');if(sv&&LANGNAME[sv])lang=sv}catch(e){}
+  applyChrome(); buildTimeline();
+  $('#lang').onchange=e=>{lang=e.target.value;try{localStorage.setItem('shield.lang',lang)}catch(x){}applyChrome();buildTimeline();renderPanel()};
+  $('#play').onclick=()=>{playing=!playing;$('#play').textContent=playing?t('pause'):t('play');if(playing)freeze=null;};
   for(const s of [1,4,16]) $('#spd'+s).onclick=()=>{speed=s;for(const k of [1,4,16])$('#spd'+k).classList.toggle('on',k===s)};
   $('#live').classList.toggle('on',liveOnly);
   $('#live').onclick=()=>{liveOnly=!liveOnly;$('#live').classList.toggle('on',liveOnly);lastTickSec=-1;renderPanel()};
@@ -178,7 +196,7 @@ function init(){
 }
 
 function loop(ts){
-  if(playing&&!feed){const dt=(ts-lastTs)/1000*speed;clock=Math.min(B.clock,clock+dt);if(clock>=B.clock){playing=false;$('#play').textContent='Play'}}
+  if(playing&&!feed){const dt=(ts-lastTs)/1000*speed;clock=Math.min(B.clock,clock+dt);if(clock>=B.clock){playing=false;$('#play').textContent=t('play')}}
   lastTs=ts;
   if(freeze&&freeze.ghost!==null&&freeze.ghost<1){freeze.ghost=Math.min(1,freeze.ghost+0.012)}
   draw();
@@ -244,9 +262,9 @@ function draw(){
   // caption
   const cap=$('#caption');
   if(feed){const it=feedItem&&feedItem.t_start<=clock&&clock<=feedItem.t_end?feedItem:null;
-    if(it){cap.innerHTML=`${it.caption||it.text[lang]||it.text.en}<small>${it.kind.replace('_',' ')} · engine ${it.engine_latency_ms} ms${it.narration_latency_ms!=null?` · caption ${it.narration_latency_ms} ms (${it.caption_backend||'local'})`:''} · evidence ${it.evidence.slice(0,2).join(', ')}</small>`;cap.classList.add('show')}else cap.classList.remove('show');return}
+    if(it){cap.innerHTML=`${it.caption||it.text[lang]||it.text.en}<small>${t('k_'+it.kind)} · ${t('engine_ms')} ${it.engine_latency_ms} ms${it.narration_latency_ms!=null?` · ${t('caption_ms')} ${it.narration_latency_ms} ms (${it.caption_backend||'local'})`:''} · ${t('evidence')} ${it.evidence.slice(0,2).join(', ')}</small>`;cap.classList.add('show')}else cap.classList.remove('show');return}
   const item=B.overlay.find(o=>o.t_start<=clock&&clock<=o.t_end&&(!liveOnly||o.t_start<=clock));
-  if(item){cap.innerHTML=`${item.text[lang]||item.text.en}<small>${item.kind.replace('_',' ')} · rank ${item.rank} · evidence ${item.evidence.slice(0,2).join(', ')}</small>`;cap.classList.add('show')}else cap.classList.remove('show');
+  if(item){cap.innerHTML=`${item.text[lang]||item.text.en}<small>${t('k_'+item.kind)} · ${t('rank')} ${item.rank} · ${t('evidence')} ${item.evidence.slice(0,2).join(', ')}</small>`;cap.classList.add('show')}else cap.classList.remove('show');
 }
 function drawFreeze(row){
   const m=freeze.moment;
@@ -254,11 +272,11 @@ function drawFreeze(row){
     C.strokeStyle='rgba(242,179,91,.95)';C.lineWidth=3;C.beginPath();C.moveTo(sx(e.x),sy(e.y));C.lineTo(sx(e.end_x),sy(e.end_y));C.stroke();
     C.beginPath();C.arc(sx(e.end_x),sy(e.end_y),14,0,7);C.strokeStyle='rgba(242,179,91,.9)';C.lineWidth=2;C.stroke();
     C.fillStyle='#f2b35b';C.font='600 13px "Barlow Condensed"';C.textAlign='center';
-    C.fillText(`${short(e.player)} to ${short(e.receiver)} · ${e.distance} m · ${e.speed} m/s · difficulty ${e.difficulty}`,cx(sx((e.x+e.end_x)/2)),Math.max(40,sy((e.y+e.end_y)/2)-18));
-    C.fillText(`danger ${e.danger_before} → ${e.danger_intended}`,cx(sx(e.end_x)),Math.min(PH-30,sy(e.end_y)+30));return}
+    C.fillText(t('kp_lbl',{a:short(e.player),b:short(e.receiver),dist:e.distance,speed:e.speed,diff:e.difficulty}),cx(sx((e.x+e.end_x)/2)),Math.max(40,sy((e.y+e.end_y)/2)-18));
+    C.fillText(t('danger_arrow',{a:e.danger_before,b:e.danger_intended}),cx(sx(e.end_x)),Math.min(PH-30,sy(e.end_y)+30));return}
   if(m.kind==='chance'||m.kind==='goal'){const e=B.events.find(x=>x.id===m.evidence[0]);if(!e)return;const gx=e.team==='home'?L:0;
     C.setLineDash([4,5]);C.strokeStyle=m.kind==='goal'?'rgba(242,179,91,.95)':'rgba(243,239,230,.8)';C.lineWidth=3;C.beginPath();C.moveTo(sx(e.x),sy(e.y));C.lineTo(sx(gx),sy(34));C.stroke();C.setLineDash([]);
-    C.fillStyle='#f2b35b';C.font='600 13px "Barlow Condensed"';C.textAlign='center';C.fillText(`${short(e.player)} ${m.kind==='goal'?'GOAL':'shot'} · ${e.distance} m · xG ${e.xg} · ${e.speed} m/s`,cx(sx(e.x)),sy(e.y)-26);return}
+    C.fillStyle='#f2b35b';C.font='600 13px "Barlow Condensed"';C.textAlign='center';C.fillText(t('shot_lbl',{who:short(e.player),kind:m.kind==='goal'?t('GOAL'):t('shot'),dist:e.distance,xg:e.xg,speed:e.speed}),cx(sx(e.x)),sy(e.y)-26);return}
   if(m.kind!=='stop')return;
   const ev=B.events.find(e=>e.id===m.evidence[0]); if(!ev)return;
   const pid=ev.player; const [px,py]=pos(row,pid);
@@ -270,120 +288,119 @@ function drawFreeze(row){
   if(ev.type==='interception'){const ps=B.events.find(e=>e.id===ev.pass_id); if(ps){
     C.setLineDash([4,5]);C.strokeStyle='rgba(255,106,77,.9)';C.lineWidth=3;C.beginPath();C.moveTo(sx(ps.x),sy(ps.y));C.lineTo(sx(ps.end_x),sy(ps.end_y));C.stroke();C.setLineDash([]);
     const rx=ps.end_x,ry=ps.end_y; C.beginPath();C.arc(sx(rx),sy(ry),14,0,7);C.strokeStyle='rgba(255,106,77,.9)';C.lineWidth=2;C.stroke();
-    C.fillStyle='#ff6a4d';C.font='600 13px "Barlow Condensed"';C.textAlign='center';C.fillText(`intended: ${short(ps.receiver)} · danger ${ps.danger_intended}`,cx(sx(rx)),Math.min(PH-30,sy(ry)+34));
+    C.fillStyle='#ff6a4d';C.font='600 13px "Barlow Condensed"';C.textAlign='center';C.fillText(t('intended',{who:short(ps.receiver),d:ps.danger_intended}),cx(sx(rx)),Math.min(PH-30,sy(ry)+34));
     if(freeze.ghost!==null){const g=freeze.ghost;const bx=ev.x+(rx-ev.x)*g,by=ev.y+(ry-ev.y)*g;C.beginPath();C.arc(sx(bx),sy(by),6,0,7);C.fillStyle='rgba(255,255,255,.45)';C.fill();C.strokeStyle='#ff6a4d';C.stroke();
-      if(g>=1){C.fillStyle='#ff6a4d';C.font='600 15px "Barlow Condensed"';C.textAlign='right';C.fillText('without him, the pass arrives',PW-PAD-10,PH-PAD-12);C.textAlign='center'}}
+      if(g>=1){C.fillStyle='#ff6a4d';C.font='600 15px "Barlow Condensed"';C.textAlign='right';C.fillText(t('ghost'),PW-PAD-10,PH-PAD-12);C.textAlign='center'}}
   }}
-  C.fillStyle='#f2b35b';C.font='600 13px "Barlow Condensed"';C.textAlign='center';C.fillText(`${short(pid)} ${ev.type} · danger ${m.detail.danger_stopped} stopped`,cx(sx(px)),sy(py)-26);
+  C.fillStyle='#f2b35b';C.font='600 13px "Barlow Condensed"';C.textAlign='center';C.fillText(t('stopped_lbl',{who:short(pid),action:t('a_'+ev.type),d:m.detail.danger_stopped}),cx(sx(px)),sy(py)-26);
 }
 
 // ---------------- timeline
 function buildTimeline(){
   const tl=$('#timeline'); tl.innerHTML='';
   for(const m of B.moments){const b=document.createElement('button');b.className='tick '+m.kind;b.style.left=(m.t/B.clock*100)+'%';
-    b.dataset.t=m.t;b.title=`${fmt(m.t)} ${m.kind}${m.player?' · '+name(m.player):''}`;b.setAttribute('aria-label',b.title);b.onclick=()=>jumpTo(m);tl.appendChild(b)}
-  for(const [t,l] of [[0,'KO'],[2700,'HT'],[5399,'FT']]){const s=document.createElement('span');s.className='half';s.style.left=(t/B.clock*100)+'%';s.textContent=l;tl.appendChild(s)}
+    b.dataset.t=m.t;b.title=`${fmt(m.t)} ${t('k_'+m.kind)}${m.player?' · '+name(m.player):''}`;b.setAttribute('aria-label',b.title);b.onclick=()=>jumpTo(m);tl.appendChild(b)}
+  for(const [tt,l] of [[0,'ko'],[2700,'ht'],[5399,'ft']]){const s=document.createElement('span');s.className='half';s.style.left=(tt/B.clock*100)+'%';if(l==='ft')s.style.transform='translateX(-100%)';else if(l==='ht')s.style.transform='translateX(-50%)';s.textContent=t(l);tl.appendChild(s)}
 }
 let lastTickSec=-1;
 function updateTicks(){const s=Math.floor(clock);if(s===lastTickSec)return;lastTickSec=s;document.querySelectorAll('#timeline .tick').forEach(b=>{b.style.visibility=(liveOnly&&+b.dataset.t>clock)?'hidden':'visible'})}
-function jumpTo(m,ghost=false){playing=false;$('#play').textContent='Play';clock=m.t;if(m.kind==='key_pass'){const e=B.events.find(x=>x.id===m.evidence[0]);if(e&&e.t_start!=null)clock=e.t_start}freeze={moment:m,ghost:ghost?0:null};renderPanel()}
+function jumpTo(m,ghost=false){if(!m)return;playing=false;$('#play').textContent=t('play');clock=m.t;if(m.kind==='key_pass'){const e=B.events.find(x=>x.id===m.evidence[0]);if(e&&e.t_start!=null)clock=e.t_start}freeze={moment:m,ghost:ghost?0:null};renderPanel()}
 
 // ---------------- panel
 function storyFor(md,pid){const it=B.stories.items;return it[`${md}|${lang}|${pid||''}`]||null}
 function storyFallback(md,pid){const it=B.stories.items;return it[`${md}|en|${pid||''}`]||null}
 function factsHtml(story){if(!story)return'';const used=story.facts_used||[];
-  return `<button class="why" data-toggle="facts">Why? Show the ${used.length} facts behind this</button> <button class="why" data-toggle="trace">How the agents wrote it</button><div class="facts">${used.map(f=>`<div><code>${f.id}</code><span>${f.text}</span>${f.evidence.length?`<button data-ev="${f.evidence[0]}">see ${f.evidence[0]}</button>`:''}</div>`).join('')}</div>${traceHtml(story)}`}
+  return `<button class="why" data-toggle="facts">${t('why_facts',{n:used.length})}</button> <button class="why" data-toggle="trace">${t('how_agents')}</button><div class="facts">${used.map(f=>`<div><code>${f.id}</code><span>${(f.i18n&&f.i18n[lang])||f.text}</span>${f.evidence.length?`<button data-ev="${f.evidence[0]}">${t('see_ev',{id:f.evidence[0]})}</button>`:''}</div>`).join('')}</div>${traceHtml(story)}`}
 function traceHtml(s){if(!s.trace||!s.trace.length)return'';return `<div class="trace">${s.trace.map(t=>{let body='';if(t.agent==='Verifier'||t.agent==='Final check'){body=`<span class="v ${t.verdict.startsWith('accepted')?'':'no'}">${t.verdict}</span> · ${t.kept} kept, ${t.rejected} rejected`+(t.problems&&t.problems.length?`<div class="txt">${t.problems.map(p=>`<span class="bad">${p.text}</span> <span class="what">${p.problems.join('; ')}</span>`).join('<br>')}</div>`:'')}else if(t.text){body=`<div class="txt">${t.text.replace(/\[f\d+(?:,\s*f\d+)*\]/g,m=>`<span class="what">${m}</span>`)}</div>`}else body=`<span class="what">${t.step}</span>`;return `<div class="tstep"><div class="who">${t.agent}<small>${t.step} · ${t.ms} ms${t.backend?' · '+t.backend:''}</small></div><div>${body}</div></div>`}).join('')}</div>`}
-function storyBlock(md,pid){let s=storyFor(md,pid);let miss='';if(!s){s=storyFallback(md,pid);miss=`<p class="note" style="margin:0 0 8px;border:0;padding:0;color:var(--amber)">${LANGNAME[lang]} is not in this build. The template narrator covers English, Spanish, German and French; a Microsoft Foundry model covers any language. Showing English.</p>`}if(!s)return'<p class="why">No story for this view yet.</p>';
-  const t=s.text.split(/(?<=\.)\s+/).map(x=>`<p>${x}</p>`).join('');
-  if(miss)return miss+`<div class="story">${t}</div>`;
-  const ft=(liveOnly&&clock<B.clock-1)?'<span class="pill">full-time story</span>':'';
-  return `<div class="story">${t}</div><div class="why">${ft} Verified: ${s.verification.sentences.filter(x=>x.ok).length} sentences kept, ${s.verification.rejected} rejected · ${s.backend==='local'?'local narrator':'Microsoft Foundry'}${s.attempts>1?` · ${s.attempts} drafts`:''}</div>${factsHtml(s)}`}
-const LANGNAME={en:'English',es:'Español',de:'Deutsch',fr:'Français',pt:'Português',ja:'日本語',th:'ไทย'};
-function langSelect(){return `<select id="lang">${Object.keys(LANGNAME).map(l=>`<option value="${l}" ${l===lang?'selected':''}>${LANGNAME[l]}</option>`).join('')}</select>`}
-function langNote(){if(B.stories.backend==='local')return`<p class="note">Stories in this build came from the template narrator (English, Spanish, German, French), through the same Verifier. A Microsoft Foundry model writes free prose in any language from the same facts.</p>`;return''}
+function storyBlock(md,pid){let s=storyFor(md,pid);let miss='';if(!s){s=storyFallback(md,pid);miss=`<p class="note" style="margin:0 0 8px;border:0;padding:0;color:var(--amber)">${t('lang_missing',{lang:LANGNAME[lang]})}</p>`}if(!s)return`<p class="why">${t('no_story')}</p>`;
+  const tx=s.text.split(/(?<=\.)\s+/).map(x=>`<p>${x}</p>`).join('');
+  if(miss)return miss+`<div class="story">${tx}</div>`;
+  const ft=(liveOnly&&clock<B.clock-1)?`<span class="pill">${t('ft_story')}</span>`:'';
+  return `<div class="story">${tx}</div><div class="why">${ft} ${t('verified',{k:s.verification.sentences.filter(x=>x.ok).length,r:s.verification.rejected})} · ${s.backend==='local'?t('local_narr'):t('foundry_narr')}${s.attempts>1?` · ${t('drafts',{n:s.attempts})}`:''}</div>${factsHtml(s)}`}
+function langSelect(){return ''}
+function langNote(){if(B.stories.backend==='local')return`<p class="note">${t('lang_note')}</p>`;return''}
 function playerSelect(){return `<select id="focus">${B.meta.players.filter(p=>p.role!=='GK').map(p=>`<option value="${p.id}" ${p.id===focus?'selected':''}>${p.name} · ${clubs()[p.team]}</option>`).join('')}</select>`}
 
 function renderPanel(){
   const P=$('#panel'); let h='';
   if(mode==='casual'){
-    h+=`<h2>The match in three lines</h2><div class="row">${langSelect()}<select id="club"><option value="home" ${club==='home'?'selected':''}>My club: ${clubs().home}</option><option value="away" ${club==='away'?'selected':''}>My club: ${clubs().away}</option></select></div>${storyBlock('casual')}${langNote()}`;
+    h+=`<h2>${t('fan_h')}</h2><div class="row"><select id="club"><option value="home" ${club==='home'?'selected':''}>${t('my_club')}: ${clubs().home}</option><option value="away" ${club==='away'?'selected':''}>${t('my_club')}: ${clubs().away}</option></select></div>${storyBlock('casual')}${langNote()}`;
     const mine=momentsVisible().filter(m=>m.team===club);
     const top=mine.find(m=>m.kind==='stop'&&m.detail.action==='interception')||mine.find(m=>m.kind==='stop');
-    if(top)h+=`<h3>The ${clubs()[club]} moment the highlights would miss</h3><p>${fmt(top.t)} ${name(top.player)} ${top.detail.action}, danger ${top.detail.danger_stopped} stopped. <button data-jump="${top.rank}">Watch it</button> ${top.detail.action==='interception'?`<button data-ghost="${top.rank}">Without him</button>`:''}</p>`;
-    const kp=mine.find(m=>m.kind==='key_pass'); if(kp)h+=`<p>${fmt(kp.t)} ${name(kp.player)} key pass, ${kp.detail.distance} m at ${kp.detail.pass_speed} m/s. <button data-jump="${kp.rank}">Watch it</button></p>`;
+    if(top)h+=`<h3>${t('miss_h',{club:clubs()[club]})}</h3><p>${fmt(top.t)} ${name(top.player)} ${t('a_'+top.detail.action)}, ${t('danger_stopped',{d:top.detail.danger_stopped})}. <button data-jump="${top.rank}">${t('watch')}</button> ${top.detail.action==='interception'?`<button data-ghost="${top.rank}">${t('without')}</button>`:''}</p>`;
+    const kp=mine.find(m=>m.kind==='key_pass'); if(kp)h+=`<p>${fmt(kp.t)} ${name(kp.player)} ${t('kp_line',{dist:kp.detail.distance,speed:kp.detail.pass_speed})}. <button data-jump="${kp.rank}">${t('watch')}</button></p>`;
     const stoppers=Object.entries(B.players).filter(([id,p])=>p.team===club&&p.role!=='GK').sort((a,b)=>b[1].threat_prevented-a[1].threat_prevented).slice(0,3);
-    h+=`<h3>Who did the quiet work for ${clubs()[club]}</h3><table>${stoppers.map(([id,p])=>`<tr><td>${p.name}<span class="pill">${B.fingerprints[id]?.archetype_label||''}</span></td><td class="n">${B.possessions.filter(q=>q.ended_by===id).length} attacks ended</td></tr>`).join('')}</table>`;
+    h+=`<h3>${t('quiet_h',{club:clubs()[club]})}</h3><table>${stoppers.map(([id,p])=>`<tr><td>${p.name}<span class="pill">${archOf(id)}</span></td><td class="n">${B.possessions.filter(q=>q.ended_by===id).length} ${t('attacks_ended')}</td></tr>`).join('')}</table>`;
   }
   if(mode==='analyst'){
     const h0=B.teams.home,a0=B.teams.away,c=B.control;
-    h+=`<h2>Analyst</h2><div class="row">${langSelect()}</div>${storyBlock('analyst')}`;
-    h+=`<h3>Team numbers at full time</h3><table><tr><th></th><th class="n">${clubs().home}</th><th class="n">${clubs().away}</th></tr>`;
-    for(const [k,l] of [['shots','Shots'],['xg','xG'],['possession','Possession'],['pass_accuracy','Pass accuracy'],['interceptions','Interceptions'],['threat_prevented','Threat prevented'],['xg_prevented','xG prevented']])
+    h+=`<h2>${t('an_h')}</h2>${storyBlock('analyst')}`;
+    h+=`<h3>${t('team_numbers')}</h3><table><tr><th></th><th class="n">${clubs().home}</th><th class="n">${clubs().away}</th></tr>`;
+    for(const [k,l] of [['shots',t('shots')],['xg','xG'],['possession',t('possession')],['pass_accuracy',t('pass_acc')],['interceptions',t('interceptions')],['threat_prevented',t('threat_prevented')],['xg_prevented',t('xg_prevented')]])
       h+=`<tr><td>${l}</td><td class="n">${fmtv(k,h0[k])}</td><td class="n">${fmtv(k,a0[k])}</td></tr>`;
     h+=`</table>`;
-    if(c)h+=`<h3>Same match, Shield switched off <span class="pill">control run, same seed</span></h3><table><tr><th>${clubs().away} attacking</th><th class="n">with Shield</th><th class="n">without</th></tr><tr><td>Shots</td><td class="n">${a0.shots}</td><td class="n">${c.teams.away.shots}</td></tr><tr><td>xG</td><td class="n">${a0.xg}</td><td class="n">${c.teams.away.xg}</td></tr><tr><td>Goals</td><td class="n">${B.score.away}</td><td class="n">${c.score.away}</td></tr></table>`;
-    h+=`<h3>Threat prevented, top five</h3><table><tr><th>Player</th><th class="n">Danger stopped</th><th class="n">Attacks ended</th><th class="n">xG prevented</th></tr>`;
+    if(c)h+=`<h3>${t('control_h')} <span class="pill">${t('control_pill')}</span></h3><table><tr><th>${t('attacking',{club:clubs().away})}</th><th class="n">${t('with_shield')}</th><th class="n">${t('without_shield')}</th></tr><tr><td>${t('shots')}</td><td class="n">${a0.shots}</td><td class="n">${c.teams.away.shots}</td></tr><tr><td>xG</td><td class="n">${a0.xg}</td><td class="n">${c.teams.away.xg}</td></tr><tr><td>${t('goals')}</td><td class="n">${B.score.away}</td><td class="n">${c.score.away}</td></tr></table>`;
+    h+=`<h3>${t('tp_h')}</h3><table><tr><th>${t('player')}</th><th class="n">${t('danger_stopped_h')}</th><th class="n">${t('attacks_ended_h')}</th><th class="n">${t('xg_prevented')}</th></tr>`;
     const tp=Object.entries(B.players).filter(([id,p])=>p.role!=='GK').sort((a,b)=>b[1].threat_prevented-a[1].threat_prevented).slice(0,5);
-    for(const [id,p] of tp){const ended=B.possessions.filter(q=>q.ended_by===id).length;h+=`<tr><td>${p.name}<span class="pill">${B.fingerprints[id]?.archetype_label||''}</span></td><td class="n">${p.threat_prevented.toFixed(2)}</td><td class="n">${ended}</td><td class="n">${p.xg_prevented.toFixed(2)}</td></tr>`}
-    h+=`</table><h3>Try to make it lie <span class="pill">needs the server</span></h3><p class="why">Type a sentence about this match, citing a fact id like [f3]. The same Verifier the Narrator faces will check every number and name in it.</p><div class="row"><input id="lieText" style="flex:1;min-width:220px" value="Dario Okonkwo-Hale made 40 interceptions and Bianchi scored twice [f3]."><button id="lieBtn">Check it</button></div><div id="lieOut"></div>`;
-    h+=`<h3>Pass quality, top five by difficulty <span class="pill">25+ passes</span></h3><table><tr><th>Player</th><th class="n">Passes</th><th class="n">Accuracy</th><th class="n">Avg difficulty</th><th class="n">Forward</th></tr>`;
+    for(const [id,p] of tp){const ended=B.possessions.filter(q=>q.ended_by===id).length;h+=`<tr><td>${p.name}<span class="pill">${archOf(id)}</span></td><td class="n">${p.threat_prevented.toFixed(2)}</td><td class="n">${ended}</td><td class="n">${p.xg_prevented.toFixed(2)}</td></tr>`}
+    h+=`</table><h3>${t('lie_h')} <span class="pill">${t('needs_server')}</span></h3><p class="why">${t('lie_p')}</p><div class="row"><input id="lieText" style="flex:1;min-width:220px" value="Dario Okonkwo-Hale made 40 interceptions and Bianchi scored twice [f3]."><button id="lieBtn">${t('check')}</button></div><div id="lieOut"></div>`;
+    h+=`<h3>${t('pq_h')} <span class="pill">${t('pq_pill')}</span></h3><table><tr><th>${t('player')}</th><th class="n">${t('passes')}</th><th class="n">${t('accuracy')}</th><th class="n">${t('avg_diff')}</th><th class="n">${t('forward')}</th></tr>`;
     const pq=Object.entries(B.players).filter(([id,p])=>p.passes>=25).sort((a,b)=>b[1].pass_difficulty_avg-a[1].pass_difficulty_avg).slice(0,5);
     for(const [id,p] of pq)h+=`<tr><td>${p.name}</td><td class="n">${p.passes}</td><td class="n">${Math.round(100*p.passes_complete/p.passes)}%</td><td class="n">${p.pass_difficulty_avg}</td><td class="n">${p.progressive_passes}</td></tr>`;
-    h+=`</table><h3>Momentum, 5-minute windows <span class="pill">control vs chaos</span></h3>`;
-    for(const r of B.momentum){if(liveOnly&&r.start>clock)break;const hs=Math.round(r.home_share*100);h+=`<div class="mom"><span>${r.label.split('-')[0]}</span><div class="split"><i style="width:${hs}%;background:var(--home)"></i><i style="width:${100-hs}%;background:var(--away)"></i></div><span>${r.regime}</span></div>`}
-    h+=`<p class="why">Share of danger created per window. Chaos = possession changes per minute above the match average.</p>`;
+    h+=`</table><h3>${t('mom_h')} <span class="pill">${t('mom_pill')}</span></h3>`;
+    for(const r of B.momentum){if(liveOnly&&r.start>clock)break;const hs=Math.round(r.home_share*100);h+=`<div class="mom"><span>${r.label.split('-')[0]}</span><div class="split"><i style="width:${hs}%;background:var(--home)"></i><i style="width:${100-hs}%;background:var(--away)"></i></div><span>${t('r_'+r.regime)}</span></div>`}
+    h+=`<p class="why">${t('mom_p')}</p>`;
   }
   if(mode==='player'){
     const s=playerLive(focus,clock); const fp=B.fingerprints[focus];
-    h+=`<h2>Through one player's eyes</h2><div class="row">${playerSelect()}</div>`;
-    h+=`<div class="tiles"><div class="tile"><b>${s.interceptions}</b><span>interceptions</span></div><div class="tile"><b>${s.ended}</b><span>attacks ended</span></div><div class="tile"><b>${s.threat.toFixed(2)}</b><span>danger stopped</span></div><div class="tile"><b>${s.tackles_won}</b><span>tackles won</span></div><div class="tile"><b>${s.passes_complete}/${s.passes}</b><span>passes</span></div><div class="tile"><b>${s.progressive}</b><span>progressive passes</span></div><div class="tile"><b>${s.shots}</b><span>shots</span></div><div class="tile"><b>${s.goals}</b><span>goals</span></div></div><p class="why">Counting up to ${fmt(clock)}. Archetype at full time: ${fp?fp.archetype_label:''}.</p>`;
+    h+=`<h2>${t('pf_h')}</h2><div class="row">${playerSelect()}</div>`;
+    h+=`<div class="tiles"><div class="tile"><b>${s.interceptions}</b><span>${t('t_int')}</span></div><div class="tile"><b>${s.ended}</b><span>${t('t_ended')}</span></div><div class="tile"><b>${s.threat.toFixed(2)}</b><span>${t('t_danger')}</span></div><div class="tile"><b>${s.tackles_won}</b><span>${t('t_tackles')}</span></div><div class="tile"><b>${s.passes_complete}/${s.passes}</b><span>${t('t_passes')}</span></div><div class="tile"><b>${s.progressive}</b><span>${t('t_prog')}</span></div><div class="tile"><b>${s.shots}</b><span>${t('t_shots')}</span></div><div class="tile"><b>${s.goals}</b><span>${t('t_goals')}</span></div></div><p class="why">${t('counting',{clock:fmt(clock),arch:fp?archLabel(fp.archetype):''})}</p>`;
     h+=storyBlock('player',focus)||'';
     const stops=B.threat_prevented.filter(r=>r.player===focus&&(!liveOnly||r.t<=clock)).sort((a,b)=>b.danger_stopped-a.danger_stopped).slice(0,6);
-    if(stops.length){h+=`<h3>His biggest stops</h3><table><tr><th>Time</th><th>Action</th><th class="n">Danger</th><th></th></tr>`;for(const r of stops){const m=B.moments.find(q=>q.evidence[0]===r.event_id);h+=`<tr><td>${fmt(r.t)}</td><td>${r.type}</td><td class="n">${r.danger_stopped}</td><td>${m?`<button data-jump="${m.rank}">watch</button> ${r.type==='interception'?`<button data-ghost="${m.rank}">without him</button>`:''}`:''}</td></tr>`}h+=`</table>`}
+    if(stops.length){h+=`<h3>${t('stops_h')}</h3><table><tr><th>${t('time')}</th><th>${t('action')}</th><th class="n">${t('danger')}</th><th></th></tr>`;for(const r of stops){const m=B.moments.find(q=>q.evidence[0]===r.event_id);h+=`<tr><td>${fmt(r.t)}</td><td>${t('a_'+r.type)}</td><td class="n">${r.danger_stopped}</td><td>${m?`<button data-jump="${m.rank}">${t('watch_s')}</button> ${r.type==='interception'?`<button data-ghost="${m.rank}">${t('without_s')}</button>`:''}`:''}</td></tr>`}h+=`</table>`}
   }
   if(mode==='kid'){
     const fp=B.fingerprints[focus]; const pb=B.playbooks[focus]; const arche=fp.archetype;
-    h+=`<h2>Play like your idol</h2><p class="why">Pick a way of playing. See what it looks like on the pitch, what that player did today, and what to practise.</p><div class="arch">`;
+    h+=`<h2>${t('kid_h')}</h2><p class="why">${t('kid_p')}</p><div class="arch">`;
     const byArch={};for(const [id,f] of Object.entries(B.fingerprints)){(byArch[f.archetype]=byArch[f.archetype]||[]).push(id)}
     for(const [k,a] of Object.entries(B.archetypes)){const ids=byArch[k]||[];if(!ids.length)continue;const best=ids.sort((x,y)=>B.fingerprints[y].archetype_scores[k]-B.fingerprints[x].archetype_scores[k])[0];
-      h+=`<button data-arch="${best}" class="${focus===best?'on':''}"><b>${a.label}</b><span>${name(best)}</span></button>`}
-    h+=`</div><h3>${fp.archetype_label}: ${fp.name}</h3><p>${pb.intro}</p>`;
-    h+=`<h3>What playing like ${pb.first_name} looks like</h3><ol class="looks">`;
-    pb.looks_like.forEach((l,i)=>{const ev=l.evidence&&l.evidence[0];h+=`<li><span>${l.text}${ev?` <button data-ev="${ev}" title="jump to an example">see it</button>`:''}</span>${l.diagram?`<canvas class="mini" data-i="${i}" width="400" height="260" aria-label="diagram"></canvas>`:'<span></span>'}</li>`});
+      h+=`<button data-arch="${best}" class="${focus===best?'on':''}"><b>${archLabel(k)}</b><span>${name(best)}</span></button>`}
+    h+=`</div><h3>${archLabel(arche)}: ${fp.name}</h3><p>${pick(pb.intro_i18n)||pb.intro}</p>`;
+    h+=`<h3>${t('looks_h',{name:pb.first_name})}</h3><ol class="looks">`;
+    pb.looks_like.forEach((l,i)=>{const ev=l.evidence&&l.evidence[0];h+=`<li><span>${(l.i18n&&l.i18n[lang])||l.text}${ev?` <button data-ev="${ev}">${t('see_it')}</button>`:''}</span>${l.diagram?`<canvas class="mini" data-i="${i}" width="400" height="260" aria-label="diagram"></canvas>`:'<span></span>'}</li>`});
     h+=`</ol>`;
-    h+=`<h3>His game today, the main points</h3>`;
-    if(!pb.main_points.length)h+=`<p class="why">Nothing stood out from him in this match.</p>`;
+    h+=`<h3>${t('points_h')}</h3>`;
+    if(!pb.main_points.length)h+=`<p class="why">${t('no_points')}</p>`;
     h+=`<div class="points">`;
-    for(const p of pb.main_points){const label={goal:'Goal',chance:'Chance',stop:p.detail.action==='interception'?'Cut it out':p.detail.action==='tackle'?'Won the tackle':'Blocked it',key_pass:'Key pass'}[p.kind];
-      h+=`<div class="point"><span class="cond min">${p.minute}'</span><div><b>${label}</b> ${p.why}</div><div class="row"><button data-jump="${p.rank}">Watch</button>${p.kind==='stop'&&p.detail.action==='interception'?`<button data-ghost="${p.rank}">Without him</button>`:''}</div></div>`}
+    pb.main_points.forEach((p,i)=>{const label={goal:t('p_goal'),chance:t('p_chance'),stop:p.detail.action==='interception'?t('p_cut'):p.detail.action==='tackle'?t('p_tackle'):t('p_block'),key_pass:t('p_key_pass')}[p.kind];
+      h+=`<div class="point"><span class="cond min">${p.minute}'</span><div><b>${label}</b> ${(p.why_i18n&&p.why_i18n[lang])||p.why}</div><div class="row"><button data-pt="${i}">${t('watch')}</button>${p.kind==='stop'&&p.detail.action==='interception'?`<button data-ptghost="${i}">${t('without')}</button>`:''}</div></div>`});
     h+=`</div>`;
-    h+=`<h3>Best at</h3><p>${pb.best_at.map(b=>b.friendly).join(', ')}.</p>`;
-    h+=`<h3>Train like him</h3>`+pb.train_like_him.map(d=>`<div class="drill"><b>${d.drill}</b> <span class="why">for ${d.friendly}</span><br>${d.how}</div>`).join('');
-    h+=`<h3>What he could work on</h3>`+pb.work_on.map(d=>`<div class="drill"><b>${d.drill}</b> <span class="why">for ${d.friendly}</span><br>${d.how}</div>`).join('');
-    h+=`<h3>Your four-week plan <span class="pill">Coach agent</span></h3><div class="row"><input id="planName" placeholder="first name" style="width:120px"><select id="planAge"><option value="u9">Under 9</option><option value="u11" selected>Under 11</option><option value="u13">Under 13</option><option value="u15">Under 15</option></select><button id="planBtn">Make my plan</button></div><div id="planOut">${planHtml(B.plans&&B.plans[focus])}</div>`;
-    h+=`<h3>Compare your style</h3><p class="why">Put in one of your recent matches. We match the shape of your game, not the size of the numbers.</p><div class="form">`;
-    for(const [k,l] of [['minutes','minutes played'],['passes','passes'],['passes_complete','passes completed'],['shots','shots'],['goals','goals'],['tackles_won','tackles won'],['interceptions','passes cut out']])h+=`<div><label>${l}</label><input type="number" min="0" id="kid_${k}" value="${k==='minutes'?60:0}"></div>`;
-    h+=`</div><button id="matchStyle">Find my style</button><div id="styleOut"></div>`;
-    h+=`<h3>The story</h3>`+storyBlock('kid',focus);
+    h+=`<h3>${t('best_h')}</h3><p>${pb.best_at.map(b=>pick(b.friendly_i18n)||b.friendly).join(', ')}.</p>`;
+    h+=`<h3>${t('train_h')}</h3>`+pb.train_like_him.map(d=>`<div class="drill"><b>${pick(d.drill_i18n)||d.drill}</b> <span class="why">${t('for')} ${pick(d.friendly_i18n)||d.friendly}</span><br>${pick(d.how_i18n)||d.how}</div>`).join('');
+    h+=`<h3>${t('work_h')}</h3>`+pb.work_on.map(d=>`<div class="drill"><b>${pick(d.drill_i18n)||d.drill}</b> <span class="why">${t('for')} ${pick(d.friendly_i18n)||d.friendly}</span><br>${pick(d.how_i18n)||d.how}</div>`).join('');
+    h+=`<h3>${t('plan_h')} <span class="pill">${t('coach_pill')}</span></h3><div class="row"><input id="planName" placeholder="${t('first_name')}" style="width:120px"><select id="planAge">${['u9','u11','u13','u15'].map(a=>`<option value="${a}" ${a==='u11'?'selected':''}>${t(a)}</option>`).join('')}</select><button id="planBtn">${t('make_plan')}</button></div><div id="planOut">${planHtml(bundledPlan(focus))}</div>`;
+    h+=`<h3>${t('style_h')}</h3><p class="why">${t('style_p')}</p><div class="form">`;
+    for(const k of ['minutes','passes','passes_complete','shots','goals','tackles_won','interceptions'])h+=`<div><label>${t('f_'+k)}</label><input type="number" min="0" id="kid_${k}" value="${k==='minutes'?60:0}"></div>`;
+    h+=`</div><button id="matchStyle">${t('find_style')}</button><div id="styleOut"></div>`;
+    h+=`<h3>${t('story_h')}</h3>`+storyBlock('kid',focus);
   }
   P.innerHTML=h; wirePanel();
   if(mode==='kid'){const pb=B.playbooks[focus];P.querySelectorAll('canvas.mini').forEach(c=>miniPitch(c,pb.looks_like[+c.dataset.i].diagram,focus))}
 }
 function toggleFeed(){
   if(feed){feed.close();feed=null;feedItem=null;$('#feed').classList.remove('on');$('#feedStatus').hidden=true;return}
-  playing=false;$('#play').textContent='Play';freeze=null;
+  playing=false;$('#play').textContent=t('play');freeze=null;
   const url=`/api/stream?speed=${speed}&start=${Math.floor(clock)}&narrate=true`;
   feed=new EventSource(url);feedStats={engine:null,narr:null,n:0};
-  $('#feed').classList.add('on');const st=$('#feedStatus');st.hidden=false;st.textContent='connecting…';
-  feed.addEventListener('hello',e=>{const d=JSON.parse(e.data);st.textContent=`${d.speed}× · ${d.events} events`});
+  $('#feed').classList.add('on');const st=$('#feedStatus');st.hidden=false;st.textContent=t('connecting');
+  feed.addEventListener('hello',e=>{const d=JSON.parse(e.data);st.textContent=`${d.speed}× · ${d.events} ${t('events')}`});
   feed.addEventListener('match',e=>{const d=JSON.parse(e.data);clock=d.event.t;});
   feed.addEventListener('overlay',e=>{const d=JSON.parse(e.data);feedItem=d;feedStats.n++;feedStats.engine=d.engine_latency_ms;feedStats.narr=d.narration_latency_ms;
-    st.textContent=`${speed}× · engine ${d.engine_latency_ms} ms${d.narration_latency_ms!=null?` · caption ${Math.round(d.narration_latency_ms)} ms`:''}`;
+    st.textContent=`${speed}× · ${t('engine_ms')} ${d.engine_latency_ms} ms${d.narration_latency_ms!=null?` · ${t('caption_ms')} ${Math.round(d.narration_latency_ms)} ms`:''}`;
     if(!B.moments.some(m=>m.evidence[0]===d.evidence[0])){B.moments.push({kind:d.kind,t:d.t_start,minute:Math.floor(d.t_start/60),team:d.team,player:d.player,score:0,evidence:d.evidence,detail:d.detail,x:d.x,y:d.y,rank:B.moments.length+1});buildTimeline();lastTickSec=-1}
     if(mode==='player'||mode==='analyst')renderPanel()});
-  feed.addEventListener('end',()=>{st.textContent='feed ended · full time';feed.close();feed=null;});
-  feed.onerror=()=>{st.textContent='feed unavailable: run the server (uvicorn shield.server:app), the static page has no stream'};
+  feed.addEventListener('end',()=>{st.textContent=t('feed_end');feed.close();feed=null;});
+  feed.onerror=()=>{st.textContent=t('feed_unavail')};
 }
 
 // ---------------- what he sees (mirror of shield/engine/vision.py)
@@ -402,16 +419,16 @@ function laneJS(row,frm,to){const team=meta(frm).team;const [ax,ay]=pos(row,frm)
   const difficulty=Math.round(100*Math.min(1,0.45*Math.min(dist/45,1)+0.3*(1-Math.min(oppNear,12)/12)+0.25*Math.min(1,laneP*3)));
   const state=closer<LANE_REACH?'blocked':closer<CONTEST_REACH?'contested':'open';const d0=dangerAt(team,ax,ay,row),d1=dangerAt(team,bx,by,row);
   return {to,to_name:name(to),distance:Math.round(dist*10)/10,state,closest,closest_m:closest?Math.round(closer*10)/10:null,receiver_space_m:Math.round(oppNear*10)/10,difficulty,danger_now:d0,danger_if_arrives:d1,gain:Math.round((d1-d0)*1000)/1000,from_xy:[ax,ay],to_xy:[bx,by]}}
-function vision(t,pid){const row=frameAt(t);const m=meta(pid);const team=m.team;const poss=possTeamAt(t);const [x,y]=pos(row,pid);const [bx,by]=[row[1],row[2]];
-  const out={t,player:pid,name:m.name,team,role:m.role,xy:[x,y],ball:[bx,by],in_possession:poss===team,dist_to_ball:Math.round(Math.hypot(x-bx,y-by)*10)/10};
+function vision(tt,pid){const row=frameAt(tt);const m=meta(pid);const team=m.team;const poss=possTeamAt(tt);const [x,y]=pos(row,pid);const [bx,by]=[row[1],row[2]];
+  const out={t:tt,player:pid,name:m.name,team,role:m.role,xy:[x,y],ball:[bx,by],in_possession:poss===team,dist_to_ball:Math.round(Math.hypot(x-bx,y-by)*10)/10};
   const carrier=carrierAt(row,poss);
   if(poss===team&&carrier===pid){const lanes=[];const [ogx]=ownGoal(team);
     for(const q of B.frames.ids){if(q===pid||meta(q).team!==team)continue;const [qx,qy]=pos(row,q);const dist=Math.hypot(qx-x,qy-y);if(dist<4||dist>(m.role==='GK'?65:42))continue;if(meta(q).role==='GK'&&Math.abs(x-ogx)>35)continue;lanes.push(laneJS(row,pid,q))}
     lanes.sort((a,b)=>b.gain-a.gain);const open=lanes.filter(l=>l.state==='open');const best=open.length?open.reduce((a,b)=>b.gain>a.gain?b:a):null;
     const pressure=B.frames.ids.filter(q=>meta(q).team!==team&&meta(q).role!=='GK'&&Math.hypot(pos(row,q)[0]-x,pos(row,q)[1]-y)<3.5);
     Object.assign(out,{view:'carrier',lanes,options:lanes.length,open:open.length,blocked:lanes.filter(l=>l.state==='blocked').length,best,under_pressure_from:pressure,danger_here:dangerAt(team,x,y,row)});
-    out.read=best?`${m.name} has ${lanes.length} options, ${open.length} open. Best: ${short(best.to)}, danger ${best.danger_now} to ${best.danger_if_arrives}, difficulty ${best.difficulty}.`:`${m.name} has ${lanes.length} options and none open. Keep it or carry.`;
-    if(pressure.length)out.read+=` Pressed by ${pressure.map(short).join(', ')}.`;return out}
+    out.read=best?t('v_carrier',{name:m.name,n:lanes.length,o:open.length,best:short(best.to),d0:best.danger_now,d1:best.danger_if_arrives,diff:best.difficulty}):t('v_none',{name:m.name,n:lanes.length});
+    if(pressure.length)out.read+=' '+t('v_pressed',{who:pressure.map(short).join(', ')});return out}
   if(poss&&poss!==team){const closing=[];
     if(carrier){const [cxp,cyp]=pos(row,carrier);for(const q of B.frames.ids){if(q===carrier||meta(q).team!==poss)continue;const [qx,qy]=pos(row,q);if(Math.hypot(qx-cxp,qy-cyp)<4)continue;const [ds,tp]=seg(x,y,cxp,cyp,qx,qy);if(tp>0.1&&tp<0.95&&ds<CONTEST_REACH)closing.push({to:q,to_name:name(q),from_xy:[cxp,cyp],to_xy:[qx,qy],my_distance_to_lane:Math.round(ds*10)/10,state:ds<LANE_REACH?'closed':'contested',danger_if_arrives:dangerAt(poss,qx,qy,row)})}}
     const [gx,gy]=ownGoal(team);const inWedge=inTri(x,y,bx,by,gx,gy-POST,gx,gy+POST);const [dline]=seg(x,y,bx,by,gx,gy);
@@ -419,31 +436,31 @@ function vision(t,pid){const row=frameAt(t);const m=meta(pid);const team=m.team;
     closing.sort((a,b)=>b.danger_if_arrives-a.danger_if_arrives);
     Object.assign(out,{view:'defender',carrier,closing,in_goal_wedge:inWedge,distance_to_ball_goal_line:Math.round(dline*10)/10,can_tackle:Math.hypot(x-bx,y-by)<=TACKLE_REACH,marking,marking_m:Math.round(md*10)/10,wedge:{ball:[bx,by],posts:[[gx,gy-POST],[gx,gy+POST]]}});
     const closed=closing.filter(c=>c.state==='closed');const bits=[];
-    if(closed.length)bits.push(`closing ${closed.length} lane${closed.length!==1?'s':''} (most dangerous: to ${short(closed[0].to)}, danger ${closed[0].danger_if_arrives})`);
-    bits.push(inWedge?'between the ball and his goal':`${Math.round(dline)} m off the ball-to-goal line`);
-    if(out.can_tackle)bits.push('in tackling range');else if(out.dist_to_ball<8)bits.push(`${out.dist_to_ball} m from the ball`);
+    if(closed.length)bits.push(t('v_closing',{n:closed.length,s:closed.length!==1?t('v_s'):'',to:short(closed[0].to),d:closed[0].danger_if_arrives}));
+    bits.push(inWedge?t('v_wedge'):t('v_off',{m:Math.round(dline)}));
+    if(out.can_tackle)bits.push(t('v_tackle'));else if(out.dist_to_ball<8)bits.push(t('v_from_ball',{m:out.dist_to_ball}));
     out.read=`${m.name}: ${bits.join(', ')}.`;return out}
   let space=99;for(const q of B.frames.ids){if(meta(q).team===team)continue;const [qx,qy]=pos(row,q);space=Math.min(space,Math.hypot(qx-x,qy-y))}
   Object.assign(out,{view:'attacker',space_m:Math.round(space*10)/10,danger_here:dangerAt(team,x,y,row)});
-  if(carrier&&carrier!==pid&&meta(carrier).team===team){out.lane_from_carrier=laneJS(row,carrier,pid);out.carrier=carrier;out.read=`${m.name} is ${out.lane_from_carrier.state} for a pass from ${short(carrier)}, ${out.space_m} m of space, danger here ${out.danger_here}.`}
-  else out.read=`${m.name} has ${out.space_m} m of space, danger here ${out.danger_here}.`;
+  if(carrier&&carrier!==pid&&meta(carrier).team===team){out.lane_from_carrier=laneJS(row,carrier,pid);out.carrier=carrier;out.read=t('v_att',{name:m.name,state:t('s_'+out.lane_from_carrier.state),from:short(carrier),m:out.space_m,d:out.danger_here})}
+  else out.read=t('v_space',{name:m.name,m:out.space_m,d:out.danger_here});
   return out}
 const laneColor={open:'rgba(123,201,160,.9)',contested:'rgba(242,179,91,.9)',blocked:'rgba(255,106,77,.9)',closed:'rgba(123,201,160,.95)'};
 function drawVision(v,row){const [x,y]=v.xy;
   if(v.view==='carrier'){for(const l of v.lanes){const best=v.best&&l.to===v.best.to;C.setLineDash(l.state==='open'?[]:[5,5]);C.strokeStyle=laneColor[l.state];C.lineWidth=best?4:1.8;C.beginPath();C.moveTo(sx(l.from_xy[0]),sy(l.from_xy[1]));C.lineTo(sx(l.to_xy[0]),sy(l.to_xy[1]));C.stroke();C.setLineDash([]);
       if(l.state==='blocked'&&l.closest){const [qx,qy]=pos(row,l.closest);C.beginPath();C.arc(sx(qx),sy(qy),13,0,7);C.strokeStyle='rgba(255,106,77,.8)';C.lineWidth=2;C.stroke()}
-      if(best||l.state!=='open'){C.fillStyle=laneColor[l.state];C.font='600 11px "Barlow Condensed"';C.textAlign='center';const mx=(l.from_xy[0]+l.to_xy[0])/2,my=(l.from_xy[1]+l.to_xy[1])/2;C.fillText(best?`best · ${l.difficulty}`:`${l.difficulty}`,sx(mx),sy(my)-6)}}
+      if(best||l.state!=='open'){C.fillStyle=laneColor[l.state];C.font='600 11px "Barlow Condensed"';C.textAlign='center';const mx=(l.from_xy[0]+l.to_xy[0])/2,my=(l.from_xy[1]+l.to_xy[1])/2;C.fillText(best?`${t('best_lbl')} · ${l.difficulty}`:`${l.difficulty}`,sx(mx),sy(my)-6)}}
     if(v.under_pressure_from.length){C.beginPath();C.arc(sx(x),sy(y),3.5/L*(PW-2*PAD),0,7);C.strokeStyle='rgba(255,106,77,.6)';C.lineWidth=1.5;C.setLineDash([3,4]);C.stroke();C.setLineDash([])}}
   else if(v.view==='defender'){const w=v.wedge;C.beginPath();C.moveTo(sx(w.ball[0]),sy(w.ball[1]));C.lineTo(sx(w.posts[0][0]),sy(w.posts[0][1]));C.lineTo(sx(w.posts[1][0]),sy(w.posts[1][1]));C.closePath();C.fillStyle=v.in_goal_wedge?'rgba(123,201,160,.16)':'rgba(255,106,77,.12)';C.fill();
     for(const c of v.closing){C.setLineDash([5,5]);C.strokeStyle=c.state==='closed'?'rgba(255,106,77,.85)':'rgba(242,179,91,.7)';C.lineWidth=c.state==='closed'?2.5:1.5;C.beginPath();C.moveTo(sx(c.from_xy[0]),sy(c.from_xy[1]));C.lineTo(sx(c.to_xy[0]),sy(c.to_xy[1]));C.stroke();C.setLineDash([]);
-      if(c.state==='closed'){C.fillStyle='rgba(255,106,77,.95)';C.font='600 11px "Barlow Condensed"';C.textAlign='center';const mx=(c.from_xy[0]+c.to_xy[0])/2,my=(c.from_xy[1]+c.to_xy[1])/2;C.fillText(`${short(c.to)} · danger ${c.danger_if_arrives}`,cx(sx(mx)),sy(my)+14)}}
+      if(c.state==='closed'){C.fillStyle='rgba(255,106,77,.95)';C.font='600 11px "Barlow Condensed"';C.textAlign='center';const mx=(c.from_xy[0]+c.to_xy[0])/2,my=(c.from_xy[1]+c.to_xy[1])/2;C.fillText(`${short(c.to)} · ${t('danger').toLowerCase()} ${c.danger_if_arrives}`,cx(sx(mx)),sy(my)+14)}}
     C.beginPath();C.arc(sx(x),sy(y),TACKLE_REACH/L*(PW-2*PAD),0,7);C.fillStyle=v.can_tackle?'rgba(123,201,160,.35)':'rgba(123,201,160,.15)';C.fill();
     if(v.marking&&v.marking_m<6){const [qx,qy]=pos(row,v.marking);C.setLineDash([2,4]);C.strokeStyle='rgba(243,239,230,.6)';C.lineWidth=1;C.beginPath();C.moveTo(sx(x),sy(y));C.lineTo(sx(qx),sy(qy));C.stroke();C.setLineDash([])}}
   else{if(v.lane_from_carrier){const l=v.lane_from_carrier;C.setLineDash(l.state==='open'?[]:[5,5]);C.strokeStyle=laneColor[l.state];C.lineWidth=2;C.beginPath();C.moveTo(sx(l.from_xy[0]),sy(l.from_xy[1]));C.lineTo(sx(l.to_xy[0]),sy(l.to_xy[1]));C.stroke();C.setLineDash([])}
     C.beginPath();C.arc(sx(x),sy(y),Math.min(v.space_m,12)/L*(PW-2*PAD),0,7);C.strokeStyle='rgba(243,239,230,.45)';C.lineWidth=1;C.setLineDash([3,4]);C.stroke();C.setLineDash([])}}
 function updateVbox(v){const b=$('#vbox');b.classList.toggle('right',v.xy[0]<L/2);let h=`<b>${v.read}</b>`;
-  if(v.view==='carrier')h+=v.lanes.slice(0,4).map(l=>`<div class="opt"><i style="background:${laneColor[l.state]}"></i><span class="k">${short(l.to)}</span><span>${l.state} · ${l.distance} m · difficulty ${l.difficulty} · danger ${l.danger_now}→${l.danger_if_arrives}</span></div>`).join('');
-  else if(v.view==='defender')h+=v.closing.slice(0,3).map(c=>`<div class="opt"><i style="background:${c.state==='closed'?laneColor.blocked:laneColor.contested}"></i><span class="k">${short(c.to)}</span><span>${c.state} · ${c.my_distance_to_lane} m from the lane · danger if it arrives ${c.danger_if_arrives}</span></div>`).join('')+(v.marking?`<div class="opt"><i style="background:rgba(243,239,230,.6)"></i><span class="k">${short(v.marking)}</span><span>nearest opponent, ${v.marking_m} m</span></div>`:'');
+  if(v.view==='carrier')h+=v.lanes.slice(0,4).map(l=>`<div class="opt"><i style="background:${laneColor[l.state]}"></i><span class="k">${short(l.to)}</span><span>${t('s_'+l.state)} · ${l.distance} m · ${t('difficulty')} ${l.difficulty} · ${t('danger').toLowerCase()} ${l.danger_now}→${l.danger_if_arrives}</span></div>`).join('');
+  else if(v.view==='defender')h+=v.closing.slice(0,3).map(c=>`<div class="opt"><i style="background:${c.state==='closed'?laneColor.blocked:laneColor.contested}"></i><span class="k">${short(c.to)}</span><span>${t('s_'+c.state)} · ${t('lane_m',{m:c.my_distance_to_lane})} · ${t('danger_arrives',{d:c.danger_if_arrives})}</span></div>`).join('')+(v.marking?`<div class="opt"><i style="background:rgba(243,239,230,.6)"></i><span class="k">${short(v.marking)}</span><span>${t('nearest_opp',{m:v.marking_m})}</span></div>`:'');
   b.innerHTML=h;b.classList.add('show')}
 
 
@@ -453,7 +470,7 @@ function miniPitch(canvas,d,pid){const g=canvas.getContext('2d');const MW=400,MH
   g.strokeRect(mx(0),my(0),mx(L)-mx(0),my(W)-my(0));g.beginPath();g.moveTo(mx(52.5),my(0));g.lineTo(mx(52.5),my(W));g.stroke();g.beginPath();g.arc(mx(52.5),my(34),9.15/L*(MW-2*MP),0,7);g.stroke();
   for(const [x0,dd] of [[0,1],[L,-1]]){g.strokeRect(mx(x0),my(34-20.15),dd*16.5/L*(MW-2*MP),40.3/W*(MH-2*MP))}
   // direction of attack
-  g.fillStyle='rgba(255,255,255,.5)';g.font='500 12px Barlow';g.font='500 14px Barlow';g.textAlign=dir>0?'right':'left';g.fillText(dir>0?'attacks this way →':'← attacks this way',dir>0?MW-14:14,MH-16);
+  g.fillStyle='rgba(255,255,255,.5)';g.font='500 12px Barlow';g.font='500 14px Barlow';g.textAlign=dir>0?'right':'left';g.fillText(dir>0?t('attacks_way'):t('attacks_way_l'),dir>0?MW-14:14,MH-16);
   const ev=id=>B.events.find(e=>e.id===id);
   if(d.kind==='heat_defending'||d.kind==='heat_all'){const k=B.frames.ids.indexOf(pid);for(let i=0;i<B.frames.rows.length;i+=6){const r=B.frames.rows[i];if(d.kind==='heat_defending'&&possTeamAt(r[0])===team)continue;g.beginPath();g.arc(mx(r[3+2*k]),my(r[4+2*k]),9,0,7);g.fillStyle='rgba(242,179,91,.07)';g.fill()}
     if(d.kind==='heat_defending'&&d.screen){const [gx,gy]=ownGoal(team);g.strokeStyle='rgba(243,239,230,.6)';g.setLineDash([4,4]);g.beginPath();g.moveTo(mx(52.5),my(34));g.lineTo(mx(gx),my(gy));g.stroke();g.setLineDash([])}}
@@ -466,9 +483,12 @@ function miniPitch(canvas,d,pid){const g=canvas.getContext('2d');const MW=400,MH
   else if(d.kind==='thirds'){const sh=d.shares||{};const names=['defensive third','middle third','attacking third'];for(let i=0;i<3;i++){const share=sh[names[i]]||0;const u0=i/3,u1=(i+1)/3;const x0=dir>0?u0*L:(1-u1)*L,x1=dir>0?u1*L:(1-u0)*L;g.fillStyle=`rgba(242,179,91,${0.08+share*0.6})`;g.fillRect(mx(x0),my(0),mx(x1)-mx(x0),my(W)-my(0));g.fillStyle='rgba(243,239,230,.9)';g.font='600 18px "Barlow Condensed"';g.textAlign='center';g.fillText(`${Math.round(share*100)}%`,mx((x0+x1)/2),my(34)+6)}}
 }
 
+function bundledPlan(pid){const P=B.plans||{};return (P[lang]&&P[lang][pid])||(P.en&&P.en[pid])||P[pid]||null}
+const DAY={Tue:{es:'Mar',de:'Di',fr:'Mar'},Thu:{es:'Jue',de:'Do',fr:'Jeu'},Sat:{es:'Sáb',de:'Sa',fr:'Sam'}};
+const dayName=d=>(DAY[d]&&DAY[d][lang])||d;
 function planHtml(p){if(!p||!p.plan||!p.plan.weeks)return'';const pl=p.plan;
-  return `<div class="plan">${pl.weeks.map(w=>`<div class="wk"><b class="cond">Week ${w.week}</b> <span class="why">${w.theme}</span>${w.sessions.map(s=>`<div class="sess"><span class="cond day">${s.day} · ${s.minutes} min</span><div>${s.drills.map(d=>`<span class="dr"><b>${d.name}</b> ${d.minutes}′ <span class="why">${d.coaching_point}</span></span>`).join('')}</div></div>`).join('')}</div>`).join('')}
-  <p><b>Measure:</b> ${pl.measure}</p><p class="note" style="border:0;margin:0">${pl.note_to_player}</p><p class="why">${p.backend==='local'?'Local planner':'Coach agent on Microsoft Foundry'} · Plan Verifier: ${p.problems.length?p.problems.length+' problems listed':'every drill is from the library, every session fits the age'}${p.attempts>1?' · '+p.attempts+' drafts':''}</p></div>`}
+  return `<div class="plan">${pl.weeks.map(w=>`<div class="wk"><b class="cond">${t('week')} ${w.week}</b> <span class="why">${w.theme}</span>${w.sessions.map(s=>`<div class="sess"><span class="cond day">${dayName(s.day)} · ${s.minutes} ${t('min')}</span><div>${s.drills.map(d=>`<span class="dr"><b>${drillName(d.name)}</b> ${d.minutes}′ <span class="why">${d.coaching_point}</span></span>`).join('')}</div></div>`).join('')}</div>`).join('')}
+  <p><b>${t('measure')}:</b> ${pl.measure}</p><p class="note" style="border:0;margin:0">${pl.note_to_player}</p><p class="why">${p.backend==='local'?t('plan_local'):t('plan_foundry')} · ${p.problems.length?t('plan_problems',{n:p.problems.length}):t('plan_ok')}${p.attempts>1?' · '+t('drafts',{n:p.attempts}):''}</p></div>`}
 
 // ---------------- tour: the app drives itself through the story (for the video)
 let touring=false;
@@ -482,43 +502,44 @@ async function runTour(){if(touring){touring=false;$('#tourcap').classList.remov
   const bm=B.moments.find(m=>m.evidence[0]===best.event_id);
   const goal=B.moments.find(m=>m.kind==='goal');
   const steps=[
-    async()=>{setMode('casual');sel=null;freeze=null;clock=goal?goal.t-10:1200;playing=true;speed=1;$('#play').textContent='Pause';say('Highlights show the goals.','Everyone sees this part.');await sleep(5000)},
-    async()=>{if(goal){jumpTo(goal)}say(`${goal?name(goal.player):'A striker'} scores. ${B.score.home}-${B.score.away}.`,'The replays will show this ten times.');await sleep(4000)},
-    async()=>{playing=false;$('#play').textContent='Play';clock=best.t-12;freeze=null;sel=null;playing=true;speed=1;$('#play').textContent='Pause';say('Nobody will show this part.','Watch number 6.');await sleep(5500)},
-    async()=>{playing=false;$('#play').textContent='Play';clock=best.t-1.5;sel=shield;visionOn=true;$('#see').classList.add('on');say(`${name(shield)} is closing the two most dangerous lanes.`,'What he sees: computed from positions, not drawn by hand.');await sleep(5500)},
-    async()=>{const row=frameAt(clock);sel=carrierAt(row,possTeamAt(clock));say('The man on the ball has three options. All blocked.','He tries one anyway.');await sleep(5000)},
-    async()=>{sel=null;jumpTo(bm,true);showCounterfactual(bm);say('Without him, the pass arrives.',`${$('#panel .cf b.big')?.textContent||''} of attacks that got this far ended in a shot. From this match, not a script.`);await sleep(6500)},
-    async()=>{setMode('analyst');say('Every sentence is checked against the data.','A Narrator writes, a Verifier rejects anything the facts do not support, a Personalizer adapts it for you.');await sleep(5000)},
-    async()=>{setMode('kid');focus=shield;renderPanel();say('For a kid who wants to play like him: what it looks like, from the data.','Play like your idol.');await sleep(6000)},
-    async()=>{window.scrollTo({top:document.body.scrollHeight*0.45,behavior:'smooth'});say('His game today, in clickable moments. Then a plan to train like him.','Drills a Coach agent cannot invent: a verifier checks every one.');await sleep(6000)},
-    async()=>{window.scrollTo({top:0,behavior:'smooth'});say('Shield. The work the highlights miss, made visible, verified, and taught.','Synthetic data. Microsoft Foundry, Agent Framework, MCP.');await sleep(6000)},
+    async()=>{setMode('casual');sel=null;freeze=null;clock=goal?goal.t-10:1200;playing=true;speed=1;$('#play').textContent=t('pause');say(t('tr1'),t('tr1s'));await sleep(5000)},
+    async()=>{if(goal){jumpTo(goal)}say(t('tr2',{name:goal?name(goal.player):t('striker'),h:B.score.home,a:B.score.away}),t('tr2s'));await sleep(4000)},
+    async()=>{playing=false;clock=best.t-12;freeze=null;sel=null;playing=true;speed=1;$('#play').textContent=t('pause');say(t('tr3'),t('tr3s'));await sleep(5500)},
+    async()=>{playing=false;$('#play').textContent=t('play');clock=best.t-1.5;sel=shield;visionOn=true;$('#see').classList.add('on');say(t('tr4',{name:name(shield)}),t('tr4s'));await sleep(5500)},
+    async()=>{const row=frameAt(clock);sel=carrierAt(row,possTeamAt(clock));say(t('tr5'),t('tr5s'));await sleep(5000)},
+    async()=>{sel=null;jumpTo(bm,true);showCounterfactual(bm);say(t('tr6'),t('tr6s',{pct:$('#panel .cf b.big')?.textContent||''}));await sleep(6500)},
+    async()=>{setMode('analyst');say(t('tr7'),t('tr7s'));await sleep(5000)},
+    async()=>{setMode('kid');focus=shield;renderPanel();say(t('tr8'),t('tr8s'));await sleep(6000)},
+    async()=>{window.scrollTo({top:document.body.scrollHeight*0.45,behavior:'smooth'});say(t('tr9'),t('tr9s'));await sleep(6000)},
+    async()=>{window.scrollTo({top:0,behavior:'smooth'});say(t('tr10'),t('tr10s'));await sleep(6000)},
   ];
   for(const st of steps){if(!touring)break;await st()}
-  touring=false;$('#tourcap').classList.remove('show');$('#tour').classList.remove('on');playing=false;$('#play').textContent='Play';}
+  touring=false;$('#tourcap').classList.remove('show');$('#tour').classList.remove('on');playing=false;$('#play').textContent=t('play');}
 
 function pretty(k){return k.replace('_p90',' per 90').replace(/_/g,' ')}
 function fmtv(k,v){if(k==='possession'||k==='pass_accuracy')return Math.round(v*100)+'%';return typeof v==='number'?(Number.isInteger(v)?v:v.toFixed(2)):v}
 function wirePanel(){
   const P=$('#panel');
   P.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=()=>{const box=b.parentElement.querySelector('.'+b.dataset.toggle);if(box)box.classList.toggle('open')});
-  P.querySelectorAll('[data-ev]').forEach(b=>b.onclick=()=>{const e=B.events.find(x=>x.id===b.dataset.ev);if(e){playing=false;$('#play').textContent='Play';clock=Math.max(0,e.t-3);freeze=null}});
+  P.querySelectorAll('[data-ev]').forEach(b=>b.onclick=()=>{const e=B.events.find(x=>x.id===b.dataset.ev);if(e){playing=false;$('#play').textContent=t('play');clock=Math.max(0,e.t-3);freeze=null}});
+  P.querySelectorAll('[data-pt]').forEach(b=>b.onclick=()=>jumpTo(ptMoment(B.playbooks[focus].main_points[+b.dataset.pt])));
+  P.querySelectorAll('[data-ptghost]').forEach(b=>b.onclick=()=>{const m=ptMoment(B.playbooks[focus].main_points[+b.dataset.ptghost]);jumpTo(m,true);showCounterfactual(m)});
   P.querySelectorAll('[data-jump]').forEach(b=>b.onclick=()=>jumpTo(B.moments.find(m=>m.rank==+b.dataset.jump)));
   P.querySelectorAll('[data-ghost]').forEach(b=>b.onclick=()=>{const m=B.moments.find(x=>x.rank==+b.dataset.ghost);jumpTo(m,true);showCounterfactual(m)});
   P.querySelectorAll('[data-arch]').forEach(b=>b.onclick=()=>{focus=b.dataset.arch;renderPanel()});
   const f=$('#focus');if(f)f.onchange=()=>{focus=f.value;renderPanel()};
-  const l=$('#lang');if(l)l.onchange=()=>{lang=l.value;renderPanel()};
   const c=$('#club');if(c)c.onchange=()=>{club=c.value;renderPanel()};
   const ms=$('#matchStyle');if(ms)ms.onclick=matchStyle;
-  const pbn=$('#planBtn');if(pbn)pbn.onclick=async()=>{const out=$('#planOut');out.innerHTML='<p class="why">asking the Coach…</p>';try{const r=await fetch('/api/plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({player:focus,age_band:$('#planAge').value,first_name:$('#planName').value||'you'})});const d=await r.json();out.innerHTML=planHtml(d)}catch(e){out.innerHTML=planHtml(B.plans&&B.plans[focus])+'<p class="why">No server here, so this is the plan built for Under 11. Run uvicorn shield.server:app for a plan at your level with your name on it.</p>'}};
-  const lb=$('#lieBtn');if(lb)lb.onclick=async()=>{const out=$('#lieOut');out.innerHTML='<p class="why">checking…</p>';try{const r=await fetch('/api/verify',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:$('#lieText').value})});const d=await r.json();const rep=d.report;
-    out.innerHTML=`<div class="trace open">${rep.sentences.map(x=>`<div class="tstep"><div class="who"><span class="v ${x.ok?'':'no'}">${x.ok?'kept':'rejected'}</span></div><div><div class="txt ${x.ok?'':'bad'}">${x.text}</div>${x.problems.length?`<span class="what">${x.problems.join('; ')}</span>`:''}</div></div>`).join('')}<p class="why">Facts it can cite right now: ${d.facts.map(f=>`<code>${f.id}</code> ${f.text}`).slice(0,5).join(' · ')}</p></div>`}catch(e){out.innerHTML='<p class="why">No server here. Run uvicorn shield.server:app to try this.</p>'}};
+  const pbn=$('#planBtn');if(pbn)pbn.onclick=async()=>{const out=$('#planOut');out.innerHTML=`<p class="why">${t('asking_coach')}</p>`;try{const r=await fetch('/api/plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({player:focus,age_band:$('#planAge').value,first_name:$('#planName').value||'you',language:lang})});const d=await r.json();out.innerHTML=planHtml(d)}catch(e){out.innerHTML=planHtml(bundledPlan(focus))+`<p class="why">${t('no_server_plan')}</p>`}};
+  const lb=$('#lieBtn');if(lb)lb.onclick=async()=>{const out=$('#lieOut');out.innerHTML=`<p class="why">${t('checking')}</p>`;try{const r=await fetch('/api/verify',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:$('#lieText').value})});const d=await r.json();const rep=d.report;
+    out.innerHTML=`<div class="trace open">${rep.sentences.map(x=>`<div class="tstep"><div class="who"><span class="v ${x.ok?'':'no'}">${x.ok?t('kept'):t('rejected')}</span></div><div><div class="txt ${x.ok?'':'bad'}">${x.text}</div>${x.problems.length?`<span class="what">${x.problems.join('; ')}</span>`:''}</div></div>`).join('')}<p class="why">${t('facts_now')}: ${d.facts.map(f=>`<code>${f.id}</code> ${(f.i18n&&f.i18n[lang])||f.text}`).slice(0,5).join(' · ')}</p></div>`}catch(e){out.innerHTML=`<p class="why">${t('no_server_lie')}</p>`}};
 }
 function showCounterfactual(m){
   const ev=B.events.find(e=>e.id===m.evidence[0]); const d=m.detail.danger_stopped;
   const done=B.possessions.filter(p=>p.outcome!=='ongoing'); const reached=done.filter(p=>p.peak_danger>=d);
   const n=reached.length, shots=reached.filter(p=>p.outcome==='shot'||p.outcome==='goal').length, goals=reached.filter(p=>p.outcome==='goal').length;
   const box=document.createElement('div');box.className='cf';
-  box.innerHTML=`<b class="big">${n?Math.round(shots/n*100):0}%</b> of the ${n} attacks in this match that reached danger ${d} ended in a shot, and ${n?Math.round(goals/n*100):0}% in a goal. ${name(ev.player)} ended this one at ${fmt(ev.t)}. <span class="why">Computed from this match's own possessions, not a scripted animation.</span>`;
+  box.innerHTML=t('cf_text',{pct:n?Math.round(shots/n*100):0,n,d,g:n?Math.round(goals/n*100):0,name:name(ev.player),clock:fmt(ev.t)});
   const old=$('#panel .cf');if(old)old.remove();$('#panel').prepend(box);
 }
 function matchStyle(){
@@ -527,7 +548,7 @@ function matchStyle(){
   const keys=Object.keys(kid); const shape=v=>{const a=keys.map(k=>+v[k]||0);const mx=Math.max(...a)||1;return a.map(x=>x/mx)};
   const ks=shape(kid); const rows=Object.entries(B.fingerprints).map(([id,f])=>{const ps=shape(f.metrics);return [Math.sqrt(ps.reduce((s,x,i)=>s+(x-ks[i])**2,0)),id,f]}).sort((a,b)=>a[0]-b[0]);
   const [d,id,f]=rows[0];
-  $('#styleOut').innerHTML=`<div class="cf">You play most like <b>${f.archetype_label}</b>: closest to ${f.name}${rows[1]?`, then ${rows[1][2].name}`:''}. <button data-arch="${id}">Train like him</button></div>`;
+  $('#styleOut').innerHTML=`<div class="cf">${t('style_out',{arch:archLabel(f.archetype),a:f.name,b:rows[1]?t('then',{b:rows[1][2].name}):''})} <button data-arch="${id}">${t('train_like')}</button></div>`;
   $('#styleOut').querySelector('[data-arch]').onclick=()=>{focus=id;renderPanel()};
 }
 </script>

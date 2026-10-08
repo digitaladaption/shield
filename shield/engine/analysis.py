@@ -868,7 +868,7 @@ class MatchState:
             "fingerprints": self.fingerprints,
             "threat_prevented": self.threat_prevented,
             "momentum": self.momentum,
-            "moments": self.moments[:80],
+            "moments": self.moments,
             "facts": [f.to_dict() for f in self.facts],
             "xg_curve": self.xg_curve_table,
             "possessions": [{"id": p.id, "team": p.team, "start_t": p.start_t, "end_t": p.end_t,

@@ -105,7 +105,9 @@ def main():
     bundle["events"] = st.events
     bundle["frames"] = compact_frames(data)
     bundle["drills"] = DRILLS
-    bundle["archetypes"] = {k: {"label": v["label"], "blurb": v["blurb"], "metrics": v["metrics"]}
+    from shield.engine.i18n_ui import ARCH as _ARCH
+    bundle["archetypes"] = {k: {"label": v["label"], "blurb": v["blurb"], "metrics": v["metrics"],
+                                "label_i18n": _ARCH.get(k, {}).get("label", {}), "blurb_i18n": _ARCH.get(k, {}).get("blurb", {})}
                             for k, v in st.ARCHETYPES.items()}
     if args.control:
         cd = load_match(args.control, with_frames=False)
@@ -114,9 +116,19 @@ def main():
                              "note": "Same seed, Shield plant switched off. A true counterfactual at match level."}
     from shield.agents.coach import build_coach_workflow, make_plan
     cwf, _ = build_coach_workflow()
-    bundle["plans"] = {}
-    for pid in st.fingerprints:
-        bundle["plans"][pid] = asyncio.run(make_plan(bundle["playbooks"][pid], "u11", "you", workflow=cwf)).to_dict()
+    from shield.engine.i18n import LANGS
+    from shield.engine.i18n_ui import ARCH, UI
+    bundle["ui"] = {lang: {k: v.get(lang) or v["en"] for k, v in UI.items()} for lang in LANGS}
+    from shield.engine.i18n_ui import DRILLS as _DRILLS
+    from shield.engine.playbook import METRIC_DRILLS as _MD
+    bundle["drills_i18n"] = {name: {"en": {"name": name, "how": how},
+                                    **{lang: {"name": _DRILLS.get(name, {}).get(lang, (name, how))[0],
+                                              "how": _DRILLS.get(name, {}).get(lang, (name, how))[1]} for lang in LANGS if lang != "en"}}
+                             for name, how in _MD.values()}
+    bundle["plans"] = {lang: {} for lang in LANGS}
+    for lang in LANGS:
+        for pid in st.fingerprints:
+            bundle["plans"][lang][pid] = asyncio.run(make_plan(bundle["playbooks"][pid], "u11", "you", workflow=cwf, language=lang)).to_dict()
     players = [p for p in args.story_players.split(",") if p in st.fingerprints]
     bundle["stories"] = asyncio.run(stories_for(args.match, st, data, players))
     os.makedirs(os.path.dirname(args.out), exist_ok=True)

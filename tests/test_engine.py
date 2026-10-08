@@ -63,3 +63,33 @@ def test_fact_packet_keeps_score_and_goal_under_truncation():
     pk = st.fact_packet(max_facts=8)
     tags = [t for f in pk["facts"] for t in f["tags"]]
     assert "score" in tags and "goal" in tags
+
+
+def test_ui_dictionary_is_complete():
+    from shield.engine.i18n import LANGS
+    from shield.engine.i18n_ui import ARCH, DRILLS, LOOKS, UI
+    for k, v in UI.items():
+        for lang in LANGS:
+            assert v.get(lang), (k, lang)
+    for k, v in LOOKS.items():
+        for lang in LANGS:
+            assert v.get(lang), (k, lang)
+    for a, v in ARCH.items():
+        for part in ("label", "blurb", "intro"):
+            for lang in LANGS:
+                assert v[part].get(lang), (a, part, lang)
+    from shield.engine.playbook import METRIC_DRILLS
+    for name, _ in METRIC_DRILLS.values():
+        assert name in DRILLS, name
+        for lang in ("es", "de", "fr"):
+            assert len(DRILLS[name][lang]) == 2
+
+
+def test_playbook_is_localised():
+    st = Engine(load_match(MATCH)).snapshot()
+    pb = st.playbook("H06")
+    for l in pb["looks_like"]:
+        assert set(l["i18n"]) >= {"en", "es", "de", "fr"} and l["i18n"]["es"] != l["i18n"]["en"]
+    for p in pb["main_points"]:
+        assert p["why_i18n"]["de"] != p["why_i18n"]["en"]
+    assert pb["archetype_label_i18n"]["fr"] == "Le Bouclier"

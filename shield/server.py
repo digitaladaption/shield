@@ -71,6 +71,7 @@ class PlanRequest(BaseModel):
     player: str
     age_band: str = "u11"
     first_name: str = "you"
+    language: str = "en"
 
 
 @app.post("/api/plan")
@@ -82,7 +83,7 @@ async def plan(req: PlanRequest):
     pb = _engine.snapshot(None).playbook(req.player)
     if "error" in pb:
         return pb
-    p = await make_plan(pb, req.age_band, req.first_name or "you", workflow=_coach_wf)
+    p = await make_plan(pb, req.age_band, req.first_name or "you", workflow=_coach_wf, language=req.language)
     return p.to_dict()
 
 

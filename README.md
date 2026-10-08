@@ -76,7 +76,7 @@ Enter a kid's simple match stats and it finds the archetype whose *shape* they r
 | Hosting | FastAPI app in a container for **Azure Container Apps** |
 | Build | GitHub Copilot used during development |
 
-With no model endpoint configured, a template narrator runs through the same workflow and verifier, so the demo always works. Every fact is rendered from a template in English, Spanish, German and French (`shield/engine/i18n.py`), so the template stories and the on-pitch captions come out in all four; the page says plainly when a language is not in the build. A Foundry model writes free prose in any language from the same facts. The UI says which path produced each story.
+With no model endpoint configured, a template narrator runs through the same workflow and verifier, so the demo always works. Every fact is rendered from a template in English, Spanish, German and French (`shield/engine/i18n.py`), and every string the viewer reads, from the buttons and legend to the playbook, the drills, the plan and the tour captions, comes from one dictionary (`shield/engine/i18n_ui.py`) that the bundle carries, so the whole page follows the chosen language. The page says plainly when a language is not in the build. A Foundry model writes free prose in any language from the same facts. The UI says which path produced each story.
 
 ## Run it
 

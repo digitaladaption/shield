@@ -74,65 +74,73 @@ def build_playbook(st, pid: str) -> dict:
     ev = s["evidence"]
     arche = fp["archetype"]
     looks = []
-
     thinking = []
+    from . import i18n
+    from .i18n_ui import ARCH, LOOKS, TEMPO, VERB, WHY, ZONE, drill as drill_i18n
+    LANGS = i18n.LANGS
 
-    def add(text, evidence=(), value=None, tag=None, diagram=None):
-        looks.append({"text": text, "evidence": list(evidence)[:10], "value": value, "tag": tag, "diagram": diagram})
+    def tr(key, **params):
+        """Render a playbook line in every language."""
+        out = {}
+        for lang in LANGS:
+            tpl = LOOKS[key].get(lang) or LOOKS[key]["en"]
+            out[lang] = tpl.format(**{k: (v.get(lang) if isinstance(v, dict) else v) for k, v in params.items()})
+        return out
 
-    def think(text, evidence=(), value=None, diagram=None):
-        thinking.append({"text": text, "evidence": list(evidence)[:10], "value": value, "tag": "thinking", "diagram": diagram})
+    def add(key, params, evidence=(), value=None, tag=None, diagram=None):
+        texts = tr(key, **params)
+        looks.append({"text": texts["en"], "i18n": texts, "evidence": list(evidence)[:10], "value": value, "tag": tag, "diagram": diagram})
+
+    def think(key, params, evidence=(), value=None, diagram=None):
+        texts = tr(key, **params)
+        thinking.append({"text": texts["en"], "i18n": texts, "evidence": list(evidence)[:10], "value": value, "tag": "thinking", "diagram": diagram})
 
     def dg(kind, ids=None, **kw):
         return {"kind": kind, "ids": list(ids or [])[:40], **kw}
 
     # archetype-specific first, so the top of the list is the point
     if arche == "Shield" or m["screening"] >= 0.3:
-        add(f"He stays between the ball and his own goal. Today that was {_pct(m['screening'])} of the time the other team had it.",
-            value=m["screening"], tag="Shield", diagram=dg("heat_defending", screen=True))
+        add("screen", dict(pct=_pct(m["screening"])), value=m["screening"], tag="Shield", diagram=dg("heat_defending", screen=True))
     if s["interceptions"] >= 3:
-        add(f"He reads passes before they happen and steps in: {s['interceptions']} cut out today.", ev["interceptions"], s["interceptions"], tag="Shield", diagram=dg("intercepts", ev["interceptions"]))
+        add("reads", dict(n=s["interceptions"]), ev["interceptions"], s["interceptions"], tag="Shield", diagram=dg("intercepts", ev["interceptions"]))
     n_ended = sum(1 for p in st.possessions if p.ended_by == pid)
     if n_ended >= 5:
-        add(f"He ended {n_ended} of the other team's attacks before they got to the box.",
-            [p.end_event_id for p in st.possessions if p.ended_by == pid], n_ended, tag="Shield",
-            diagram=dg("dots", [p.end_event_id for p in st.possessions if p.ended_by == pid]))
+        ends = [p.end_event_id for p in st.possessions if p.ended_by == pid]
+        add("ended", dict(n=n_ended), ends, n_ended, tag="Shield", diagram=dg("dots", ends))
     if arche in ("Metronome",) or (s["passes"] >= 50 and m["pass_accuracy"] >= 0.88):
-        add(f"He keeps the ball moving: {s['passes']} passes, {_pct(m['pass_accuracy'])} found a teammate.", ev["progressive_passes"], s["passes"], tag="Metronome", diagram=dg("arrows", ev["progressive_passes"]))
+        add("metronome", dict(passes=s["passes"], pct=_pct(m["pass_accuracy"])), ev["progressive_passes"], s["passes"], tag="Metronome", diagram=dg("arrows", ev["progressive_passes"]))
     if arche in ("Creator",) or s["danger_created"] >= 1.5:
-        add(f"He makes things happen with his passing: {s['progressive_passes']} passes that moved the team forward today.",
-            ev["progressive_passes"], s["progressive_passes"], tag="Creator", diagram=dg("arrows", ev["progressive_passes"]))
+        add("creator", dict(n=s["progressive_passes"]), ev["progressive_passes"], s["progressive_passes"], tag="Creator", diagram=dg("arrows", ev["progressive_passes"]))
     if s["passes_into_danger"] >= 3:
-        add(f"He plays passes into the dangerous zone, {s['passes_into_danger']} of them today.", ev["passes_into_danger"], s["passes_into_danger"], tag="Creator", diagram=dg("arrows", ev["passes_into_danger"]))
+        add("into_danger", dict(n=s["passes_into_danger"]), ev["passes_into_danger"], s["passes_into_danger"], tag="Creator", diagram=dg("arrows", ev["passes_into_danger"]))
     if arche == "Finisher" or s["shots"] >= 3:
-        add(f"He gets shots off: {s['shots']} today, worth {round(s['xg'], 2)} expected goals{', and ' + str(s['goals']) + ' went in' if s['goals'] else ''}.",
-            ev["shots"], s["shots"], tag="Finisher", diagram=dg("shots", ev["shots"]))
+        goals = {lang: (LOOKS["shots_goals"][lang].format(n=s["goals"]) if s["goals"] else "") for lang in LANGS}
+        add("shots", dict(shots=s["shots"], xg=round(s["xg"], 2), goals=goals), ev["shots"], s["shots"], tag="Finisher", diagram=dg("shots", ev["shots"]))
     if arche == "Engine" or s.get("distance_km", 0) >= 13:
-        add(f"He runs: {s['distance_km']} km covered" + (f" and {s['sprints']} sprints." if s["sprints"] else "."), value=s["distance_km"], tag="Engine", diagram=dg("heat_all"))
+        sprints = {lang: (LOOKS["runs_sprints"][lang].format(n=s["sprints"]) if s["sprints"] else "") for lang in LANGS}
+        add("runs", dict(km=s["distance_km"], sprints=sprints), value=s["distance_km"], tag="Engine", diagram=dg("heat_all"))
     if arche == "Presser" or s["pressures"] >= 60:
-        add(f"He closes people down: {s['pressures']} times he pressed the player on the ball.", value=s["pressures"], tag="Presser", diagram=dg("heat_defending"))
+        add("presses", dict(n=s["pressures"]), value=s["pressures"], tag="Presser", diagram=dg("heat_defending"))
     if arche == "Wall" or s["blocks"] >= 2:
-        add(f"He puts his body in the way: {s['blocks']} shots blocked and {s['tackles_won']} tackles won.", ev["blocks"] + ev["tackles_won"], s["blocks"], tag="Wall", diagram=dg("dots", ev["blocks"] + ev["tackles_won"]))
+        add("wall", dict(blocks=s["blocks"], tackles=s["tackles_won"]), ev["blocks"] + ev["tackles_won"], s["blocks"], tag="Wall", diagram=dg("dots", ev["blocks"] + ev["tackles_won"]))
     if arche == "Carrier" or s["progressive_carries"] >= 4:
-        add(f"He drives forward with the ball: {s['progressive_carries']} runs that took the team up the pitch.", ev["progressive_carries"], s["progressive_carries"], tag="Carrier", diagram=dg("arrows", ev["progressive_carries"]))
+        add("carries", dict(n=s["progressive_carries"]), ev["progressive_carries"], s["progressive_carries"], tag="Carrier", diagram=dg("arrows", ev["progressive_carries"]))
     # how he thinks, in plain words
     faw_counts = dict(s.get("first_action_after_win") or {})
     total_faw = sum(faw_counts.values())
     if total_faw >= 3:
         top_k, top_n = max(faw_counts.items(), key=lambda kv: kv[1])
-        verb = {"carry": "runs with it", "forward": "plays it forward", "sideways": "plays it sideways to keep it",
-                "backward": "plays it back to keep it safe", "shot": "shoots"}[top_k]
-        think(f"When he wins the ball, he usually {verb}: {top_n} of {total_faw} times today.",
+        think("win_then", dict(verb={lang: VERB[lang][top_k] for lang in LANGS}, n=top_n, total=total_faw),
               ev["interceptions"][:5] + ev["tackles_won"][:5], round(top_n / total_faw, 2),
               diagram=dg("win_then", ev["interceptions"] + ev["tackles_won"]))
     rz = hht.get("receives_in") or {}
     if rz:
         top = max(rz.items(), key=lambda kv: kv[1])
-        think(f"He asks for the ball in the {top[0]}, {_pct(top[1])} of the time.", value=top[1], diagram=dg("thirds", shares=rz))
+        think("receives", dict(zone={lang: ZONE[lang].get(top[0], top[0]) for lang in LANGS}, pct=_pct(top[1])), value=top[1], diagram=dg("thirds", shares=rz))
     ttr = hht.get("time_to_release_s")
     if ttr is not None:
-        tempo = "quickly, one or two touches" if ttr < 2.0 else ("in a couple of seconds" if ttr < 3.5 else "without rushing, he takes his time")
-        think(f"He moves the ball on {tempo}: about {ttr} seconds on the ball before each pass.", value=ttr)
+        tk = "fast" if ttr < 2.0 else ("mid" if ttr < 3.5 else "slow")
+        think("release", dict(tempo={lang: TEMPO[lang][tk] for lang in LANGS}, s=ttr), value=ttr)
 
     # main points: his moments, ranked
     mine = [mm for mm in st.moments if mm["player"] == pid and mm["kind"] in ("goal", "chance", "stop", "key_pass")]
@@ -145,47 +153,52 @@ def build_playbook(st, pid: str) -> dict:
     points = []
     for mm in chosen:
         d = mm["detail"]
-        if mm["kind"] == "goal":
-            why = f"Goal, from {d['distance']} m. Chance quality {d['xg']}."
-        elif mm["kind"] == "chance":
-            why = f"A shot worth {d['xg']} expected goals from {d['distance']} m, {d['outcome'].replace('_', ' ')}."
-        elif mm["kind"] == "stop":
-            cf = st.counterfactual(mm["evidence"][0])
-            why = (f"He {d['action']}ed with the attack at danger {d['danger_stopped']}. In this match, "
-                   f"{round(cf.get('shot_rate_from_here', 0) * 100)}% of attacks that got this far ended in a shot.")
-            if d["action"] == "interception":
-                why = why.replace("interceptioned", "cut out the pass")
-            elif d["action"] == "tackle":
-                why = why.replace("tackleed", "won the tackle")
+        why = {}
+        for lang in LANGS:
+            if mm["kind"] == "goal":
+                why[lang] = WHY["goal"][lang].format(dist=d["distance"], xg=d["xg"])
+            elif mm["kind"] == "chance":
+                why[lang] = WHY["chance"][lang].format(dist=d["distance"], xg=d["xg"], outcome=i18n.word(d["outcome"], lang))
+            elif mm["kind"] == "stop":
+                cf = st.counterfactual(mm["evidence"][0])
+                why[lang] = WHY["stop"][lang].format(did=WHY["did"][lang][d["action"]], d=d["danger_stopped"],
+                                                     pct=round(cf.get("shot_rate_from_here", 0) * 100))
+                if lang == "es":
+                    why[lang] = why[lang].replace("Él ", "", 1)
             else:
-                why = why.replace("blocked", "blocked the shot")
-        else:
-            why = (f"A {d['distance']} m pass to {st.data.name_of(d['receiver'])} that moved the danger from "
-                   f"{d['danger_before']} to {d['danger_after']}. Difficulty {d['difficulty']} out of 100.")
-        points.append({"kind": mm["kind"], "t": mm["t"], "minute": mm["minute"], "rank": mm["rank"], "why": why,
-                       "evidence": mm["evidence"], "x": mm["x"], "y": mm["y"], "detail": d})
+                why[lang] = WHY["key_pass"][lang].format(dist=d["distance"], receiver=st.data.name_of(d["receiver"]),
+                                                         d0=d["danger_before"], d1=d["danger_after"], diff=d["difficulty"])
+        points.append({"kind": mm["kind"], "t": mm["t"], "minute": mm["minute"], "rank": mm["rank"], "why": why["en"], "why_i18n": why,
+                       "evidence": mm["evidence"], "x": mm["x"], "y": mm["y"], "detail": d, "team": mm.get("team"), "player": pid,
+                       "possession_id": mm.get("possession_id")})
 
     # work on: two weakest metrics with a drill each, skipping things that make no sense for the role
+    def drill_entry(metric, value=None):
+        name, how = METRIC_DRILLS[metric]
+        return {"metric": metric, "friendly": FRIENDLY.get(metric, metric),
+                "friendly_i18n": {lang: i18n.metric(metric, lang) for lang in LANGS},
+                "value": value, "drill": name, "how": how,
+                "drill_i18n": {lang: (drill_i18n(name, lang).get("name") or name) for lang in LANGS},
+                "how_i18n": {lang: (drill_i18n(name, lang).get("how") or how) for lang in LANGS}}
+
     skip = {"goals_p90", "xg_p90", "shots_p90"} if fp["role"] in ("LCB", "RCB", "CDM", "LB", "RB") else set()
     work = []
     for w in fp["weaknesses"]:
         k = w["metric"]
         if k in skip or k not in METRIC_DRILLS or k == "time_to_release_inv":
             continue
-        name, how = METRIC_DRILLS[k]
-        work.append({"metric": k, "friendly": FRIENDLY.get(k, k), "value": w["value"], "drill": name, "how": how})
+        work.append(drill_entry(k, w["value"]))
         if len(work) == 2:
             break
-    best = [{"metric": b["metric"], "friendly": FRIENDLY.get(b["metric"], b["metric"]), "value": b["value"]} for b in fp["strengths"]]
-    train = []
-    for b in fp["strengths"][:2]:
-        if b["metric"] in METRIC_DRILLS:
-            name, how = METRIC_DRILLS[b["metric"]]
-            train.append({"metric": b["metric"], "friendly": FRIENDLY.get(b["metric"]), "drill": name, "how": how})
+    best = [{"metric": b["metric"], "friendly": FRIENDLY.get(b["metric"], b["metric"]),
+             "friendly_i18n": {lang: i18n.metric(b["metric"], lang) for lang in LANGS}, "value": b["value"]} for b in fp["strengths"]]
+    train = [drill_entry(b["metric"]) for b in fp["strengths"][:2] if b["metric"] in METRIC_DRILLS]
+    a = ARCH.get(arche, {})
 
     return {
         "player": pid, "name": nm, "first_name": first, "archetype": arche, "archetype_label": fp["archetype_label"],
         "intro": ARCHETYPE_INTRO.get(arche, ""),
+        "intro_i18n": a.get("intro", {}), "archetype_label_i18n": a.get("label", {}), "blurb_i18n": a.get("blurb", {}),
         "looks_like": (sorted(looks, key=lambda l: 0 if l["tag"] == arche else 1)[:3] + thinking[:3]),
         "main_points": points,
         "best_at": best,

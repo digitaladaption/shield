@@ -35,7 +35,8 @@ AGE_BANDS = {
 COACH_INSTRUCTIONS = """You are the Coach in a youth football system. You receive a player's playbook (what the
 idol does, what the young player should train and work on) and the player's age band. Write a four-week plan.
 Rules you cannot break:
-- Use ONLY drills from the DRILL LIBRARY you are given, by their exact names. Do not invent drills.
+- Use ONLY drills from the DRILL LIBRARY you are given, by their exact English names in the "name" field. Do not invent drills.
+- Write themes, coaching points, the measure and the note in the LANGUAGE requested.
 - Every session must fit the age band's maximum minutes and sessions per week.
 - Week 1 is easiest; each week adds one progression. Keep the tone encouraging, never gushing.
 Return JSON only, this shape:
@@ -51,6 +52,7 @@ class PlanRequest:
     age_band: str
     first_name: str
     library: dict          # drill name -> {"how":..., "for":...}
+    language: str = "en"
     feedback: str | None = None
     attempt: int = 0
     trace: list = field(default_factory=list)
@@ -123,6 +125,8 @@ def verify_plan(plan: dict, req: PlanRequest) -> list[str]:
 
 # ----------------------------------------------------------------------------- local planner
 def local_plan(req: PlanRequest) -> dict:
+    from shield.engine.i18n_ui import PLAN
+    lang = req.language if req.language in PLAN["themes"] else "en"
     band = AGE_BANDS[req.age_band]
     pb = req.playbook
     train = [d["drill"] for d in pb.get("train_like_him", []) if d["drill"] in req.library]
@@ -130,9 +134,8 @@ def local_plan(req: PlanRequest) -> dict:
     general = [n for n in req.library if n not in train and n not in work]
     days = ["Tue", "Thu", "Sat"][: band["sessions_per_week"]]
     per = band["max_session_min"]
-    themes = ["Learn the shape", "Add a defender", "Add the clock", "Play it in a game"]
-    points = ["Get the movement right, slowly.", "Now with one opponent trying to stop you.",
-              "Same drill, but you have two seconds to decide.", "Only count it when it happens in the game."]
+    themes = PLAN["themes"][lang]
+    points = PLAN["points"][lang]
     weeks = []
     k = 0
     for i in range(4):
@@ -150,14 +153,16 @@ def local_plan(req: PlanRequest) -> dict:
             each = min(20, per // (len(chosen) + 1))
             drills = [{"name": n, "minutes": each, "coaching_point": points[i]} for n in chosen]
             drills.append({"name": chosen[0], "minutes": min(15, per - each * len(chosen)),
-                           "coaching_point": "Small-sided game to finish. A bonus point every time this happens."})
+                           "coaching_point": PLAN["finish"][lang]})
             sessions.append({"day": d, "minutes": sum(x["minutes"] for x in drills), "drills": drills})
         weeks.append({"week": i + 1, "theme": themes[i], "sessions": sessions})
-    best = pb.get("best_at", [{}])[0].get("friendly", "the thing he does best")
+    b0 = (pb.get("best_at") or [{}])[0]
+    best = (b0.get("friendly_i18n") or {}).get(lang) or b0.get("friendly", "the thing he does best")
+    first = req.first_name if req.first_name not in ("", "you") else PLAN["you"][lang]
     return {"weeks": weeks,
-            "measure": f"Count {best} in every game this month. Write the number down. Beat it.",
-            "note_to_player": f"{req.first_name}, you don't need to be the fastest or score the most to matter. "
-                              f"Do what {pb.get('name', 'he')} does and your team will feel it."}
+            "measure": PLAN["measure"][lang].format(best=best),
+            "note_to_player": PLAN["note"][lang].format(first=first, idol=pb.get("name", "he")),
+            "language": lang}
 
 
 # ----------------------------------------------------------------------------- executors
@@ -171,7 +176,7 @@ class CoachExecutor(Executor):
         if self.agent is None:
             plan, raw = local_plan(req), ""
         else:
-            prompt = (f"PLAYER FIRST NAME: {req.first_name}\nAGE BAND: {json.dumps(AGE_BANDS[req.age_band])}\n"
+            prompt = (f"PLAYER FIRST NAME: {req.first_name}\nLANGUAGE: {req.language}\nAGE BAND: {json.dumps(AGE_BANDS[req.age_band])}\n"
                       f"DRILL LIBRARY: {json.dumps(req.library, ensure_ascii=False)}\n"
                       f"PLAYBOOK: {json.dumps({k: req.playbook.get(k) for k in ('name', 'archetype_label', 'intro', 'looks_like', 'best_at', 'train_like_him', 'work_on')}, ensure_ascii=False)}\n")
             if req.feedback:
@@ -229,7 +234,7 @@ def build_coach_workflow():
     return wf, backend
 
 
-async def make_plan(playbook: dict, age_band: str = "u11", first_name: str = "you", workflow=None) -> Plan:
+async def make_plan(playbook: dict, age_band: str = "u11", first_name: str = "you", workflow=None, language: str = "en") -> Plan:
     wf = workflow or build_coach_workflow()[0]
-    req = PlanRequest(playbook=playbook, age_band=age_band, first_name=first_name, library=drill_library(playbook))
+    req = PlanRequest(playbook=playbook, age_band=age_band, first_name=first_name, library=drill_library(playbook), language=language)
     return (await wf.run(req)).get_outputs()[-1]
