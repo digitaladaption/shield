@@ -45,6 +45,8 @@
   .timeline .tick.goal{background:var(--amber);width:14px;height:14px;top:2px}
   .timeline .tick.chance{background:var(--home);opacity:.7}
   .timeline .tick.stop{background:var(--ok)}
+  .timeline .tick.key_pass{background:none;border:2px solid var(--amber);width:8px;height:8px;top:5px}
+  .timeline .tick.milestone{display:none}
   .timeline .tick.momentum_shift,.timeline .tick.chaos{background:none;border:1px solid var(--mute);width:8px;height:8px;top:5px}
   .timeline .half{position:absolute;top:20px;font-size:11px;color:var(--mute)}
   .legend{font-size:12px;color:var(--mute);display:flex;gap:14px;margin-top:4px}
@@ -91,6 +93,9 @@
   .cf{background:var(--bg2);border-radius:6px;padding:10px 12px;margin-top:8px;font-size:14px}
   .cf b.big{font-family:"Barlow Condensed";font-size:28px;font-weight:600;margin-right:6px}
   .loading{padding:40px;color:var(--mute)}
+  ol.looks{padding-left:20px;margin:4px 0;max-width:62ch} ol.looks li{margin:4px 0} ol.looks button{padding:0 6px;font-size:12px;border-color:transparent;color:var(--amber)}
+  .points{display:grid;gap:6px;margin:6px 0} .point{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:start;border-top:1px solid var(--line);padding-top:6px;font-size:14px} .point .min{font-size:22px;font-weight:600;line-height:1} .point .row{margin:0}
+  .tag{position:absolute;pointer-events:none}
   @media (prefers-reduced-motion:reduce){.caption{transition:none}}
 </style>
 </head>
@@ -121,7 +126,7 @@
     <div class="caption" id="caption"></div>
     <input class="scrub" type="range" id="scrub" min="0" max="5399" value="0" aria-label="Match clock">
     <div class="timeline" id="timeline"></div>
-    <div class="legend"><span><i style="background:var(--amber)"></i>goal</span><span><i style="background:var(--home);opacity:.7"></i>chance</span><span><i style="background:var(--ok)"></i>attack stopped</span><span><i style="border:1px solid var(--mute)"></i>momentum / chaos</span></div>
+    <div class="legend"><span><i style="background:var(--amber)"></i>goal</span><span><i style="background:var(--home);opacity:.7"></i>chance</span><span><i style="background:var(--ok)"></i>attack stopped</span><span><i style="border:2px solid var(--amber)"></i>key pass</span><span><i style="border:1px solid var(--mute)"></i>momentum / chaos</span></div>
   </section>
   <aside class="panel" id="panel"><div class="loading">Loading match…</div></aside>
 </main>
@@ -129,7 +134,7 @@
 const $=s=>document.querySelector(s);
 let B=null, clock=0, playing=false, speed=1, mode='casual', focus='H06', lang='en', liveOnly=true, lastTs=0;
 let freeze=null; // {moment, ghost:0..1 or null}
-let feed=null, feedItem=null, feedStats={engine:null,narr:null,n:0};
+let feed=null, feedItem=null, feedStats={engine:null,narr:null,n:0}; let club='home';
 const fmt=t=>`${String(Math.floor(t/60)).padStart(2,'0')}:${String(Math.floor(t%60)).padStart(2,'0')}`;
 const name=pid=>B.meta.players.find(p=>p.id===pid)?.name||pid;
 const short=pid=>{const n=name(pid).split(' ');return n[n.length-1]};
@@ -208,7 +213,8 @@ function draw(){
     C.beginPath();C.arc(sx(x),sy(y),p.role==='GK'?9:10,0,7);
     C.fillStyle=p.team==='home'?(p.role==='GK'?'#d9c27a':'#f3efe6'):(p.role==='GK'?'#9bb3d1':'#6f8fb8');C.fill();
     C.fillStyle=p.team==='home'?'#1a1408':'#0f1620';C.font='600 11px "Barlow Condensed"';C.textAlign='center';C.textBaseline='middle';C.fillText(p.number,sx(x),sy(y)+.5);
-    if(isF){C.fillStyle='#f2b35b';C.font='600 13px "Barlow Condensed"';C.fillText(short(pid),sx(x),sy(y)-24)}
+    if(isF){if(!(freeze&&freeze.moment.player===pid)){C.fillStyle='#f2b35b';C.font='600 13px "Barlow Condensed"';C.fillText(short(pid),sx(x),sy(y)-24)}}
+    else{const pr=frameAt(Math.max(0,clock-0.5));const [qx,qy]=pos(pr,pid);const sp=Math.hypot(x-qx,y-qy)/0.5;if(sp>=7.5&&sp<12){C.fillStyle='rgba(243,239,230,.9)';C.font='500 11px Barlow';C.fillText(`${short(pid)} ${sp.toFixed(1)} m/s`,sx(x),sy(y)-18)}}
   }
   // ball
   C.beginPath();C.arc(sx(row[1]),sy(row[2]),6,0,7);C.fillStyle='#fff';C.fill();C.strokeStyle='#222';C.lineWidth=1.5;C.stroke();
@@ -220,7 +226,17 @@ function draw(){
   if(item){cap.innerHTML=`${item.text.en}<small>${item.kind.replace('_',' ')} · rank ${item.rank} · evidence ${item.evidence.slice(0,2).join(', ')}</small>`;cap.classList.add('show')}else cap.classList.remove('show');
 }
 function drawFreeze(row){
-  const m=freeze.moment; if(m.kind!=='stop')return;
+  const m=freeze.moment;
+  if(m.kind==='key_pass'){const e=B.events.find(x=>x.id===m.evidence[0]);if(!e)return;
+    C.strokeStyle='rgba(242,179,91,.95)';C.lineWidth=3;C.beginPath();C.moveTo(sx(e.x),sy(e.y));C.lineTo(sx(e.end_x),sy(e.end_y));C.stroke();
+    C.beginPath();C.arc(sx(e.end_x),sy(e.end_y),14,0,7);C.strokeStyle='rgba(242,179,91,.9)';C.lineWidth=2;C.stroke();
+    C.fillStyle='#f2b35b';C.font='600 13px "Barlow Condensed"';C.textAlign='center';
+    C.fillText(`${short(e.player)} to ${short(e.receiver)} · ${e.distance} m · ${e.speed} m/s · difficulty ${e.difficulty}`,cx(sx((e.x+e.end_x)/2)),Math.max(40,sy((e.y+e.end_y)/2)-18));
+    C.fillText(`danger ${e.danger_before} → ${e.danger_intended}`,cx(sx(e.end_x)),Math.min(PH-30,sy(e.end_y)+30));return}
+  if(m.kind==='chance'||m.kind==='goal'){const e=B.events.find(x=>x.id===m.evidence[0]);if(!e)return;const gx=e.team==='home'?L:0;
+    C.setLineDash([4,5]);C.strokeStyle=m.kind==='goal'?'rgba(242,179,91,.95)':'rgba(243,239,230,.8)';C.lineWidth=3;C.beginPath();C.moveTo(sx(e.x),sy(e.y));C.lineTo(sx(gx),sy(34));C.stroke();C.setLineDash([]);
+    C.fillStyle='#f2b35b';C.font='600 13px "Barlow Condensed"';C.textAlign='center';C.fillText(`${short(e.player)} ${m.kind==='goal'?'GOAL':'shot'} · ${e.distance} m · xG ${e.xg} · ${e.speed} m/s`,cx(sx(e.x)),sy(e.y)-26);return}
+  if(m.kind!=='stop')return;
   const ev=B.events.find(e=>e.id===m.evidence[0]); if(!ev)return;
   const pid=ev.player; const [px,py]=pos(row,pid);
   const gx=teamOf(pid)==='home'?0:L;
@@ -247,7 +263,7 @@ function buildTimeline(){
 }
 let lastTickSec=-1;
 function updateTicks(){const s=Math.floor(clock);if(s===lastTickSec)return;lastTickSec=s;document.querySelectorAll('#timeline .tick').forEach(b=>{b.style.visibility=(liveOnly&&+b.dataset.t>clock)?'hidden':'visible'})}
-function jumpTo(m,ghost=false){playing=false;$('#play').textContent='Play';clock=m.t;freeze={moment:m,ghost:ghost?0:null};renderPanel()}
+function jumpTo(m,ghost=false){playing=false;$('#play').textContent='Play';clock=m.t;if(m.kind==='key_pass'){const e=B.events.find(x=>x.id===m.evidence[0]);if(e&&e.t_start!=null)clock=e.t_start}freeze={moment:m,ghost:ghost?0:null};renderPanel()}
 
 // ---------------- panel
 function storyFor(md,pid){const it=B.stories.items;return it[`${md}|${lang}|${pid||''}`]||it[`${md}|en|${pid||''}`]||null}
@@ -264,9 +280,13 @@ function playerSelect(){return `<select id="focus">${B.meta.players.filter(p=>p.
 function renderPanel(){
   const P=$('#panel'); let h='';
   if(mode==='casual'){
-    h+=`<h2>The match in three lines</h2><div class="row">${langSelect()}</div>${storyBlock('casual')}${langNote()}`;
-    const top=momentsVisible().find(m=>m.kind==='stop'&&m.detail.action==='interception')||momentsVisible().find(m=>m.kind==='stop');
-    if(top)h+=`<h3>The moment the highlights would miss</h3><p>${fmt(top.t)} ${name(top.player)} ${top.detail.action}, danger ${top.detail.danger_stopped} stopped. <button data-jump="${top.rank}">Watch it</button> <button data-ghost="${top.rank}">Without him</button></p>`;
+    h+=`<h2>The match in three lines</h2><div class="row">${langSelect()}<select id="club"><option value="home" ${club==='home'?'selected':''}>My club: ${clubs().home}</option><option value="away" ${club==='away'?'selected':''}>My club: ${clubs().away}</option></select></div>${storyBlock('casual')}${langNote()}`;
+    const mine=momentsVisible().filter(m=>m.team===club);
+    const top=mine.find(m=>m.kind==='stop'&&m.detail.action==='interception')||mine.find(m=>m.kind==='stop');
+    if(top)h+=`<h3>The ${clubs()[club]} moment the highlights would miss</h3><p>${fmt(top.t)} ${name(top.player)} ${top.detail.action}, danger ${top.detail.danger_stopped} stopped. <button data-jump="${top.rank}">Watch it</button> ${top.detail.action==='interception'?`<button data-ghost="${top.rank}">Without him</button>`:''}</p>`;
+    const kp=mine.find(m=>m.kind==='key_pass'); if(kp)h+=`<p>${fmt(kp.t)} ${name(kp.player)} key pass, ${kp.detail.distance} m at ${kp.detail.pass_speed} m/s. <button data-jump="${kp.rank}">Watch it</button></p>`;
+    const stoppers=Object.entries(B.players).filter(([id,p])=>p.team===club&&p.role!=='GK').sort((a,b)=>b[1].threat_prevented-a[1].threat_prevented).slice(0,3);
+    h+=`<h3>Who did the quiet work for ${clubs()[club]}</h3><table>${stoppers.map(([id,p])=>`<tr><td>${p.name}<span class="pill">${B.fingerprints[id]?.archetype_label||''}</span></td><td class="n">${B.possessions.filter(q=>q.ended_by===id).length} attacks ended</td></tr>`).join('')}</table>`;
   }
   if(mode==='analyst'){
     const h0=B.teams.home,a0=B.teams.away,c=B.control;
@@ -279,6 +299,9 @@ function renderPanel(){
     h+=`<h3>Threat prevented, top five</h3><table><tr><th>Player</th><th class="n">Danger stopped</th><th class="n">Attacks ended</th><th class="n">xG prevented</th></tr>`;
     const tp=Object.entries(B.players).filter(([id,p])=>p.role!=='GK').sort((a,b)=>b[1].threat_prevented-a[1].threat_prevented).slice(0,5);
     for(const [id,p] of tp){const ended=B.possessions.filter(q=>q.ended_by===id).length;h+=`<tr><td>${p.name}<span class="pill">${B.fingerprints[id]?.archetype_label||''}</span></td><td class="n">${p.threat_prevented.toFixed(2)}</td><td class="n">${ended}</td><td class="n">${p.xg_prevented.toFixed(2)}</td></tr>`}
+    h+=`</table><h3>Pass quality, top five by difficulty <span class="pill">25+ passes</span></h3><table><tr><th>Player</th><th class="n">Passes</th><th class="n">Accuracy</th><th class="n">Avg difficulty</th><th class="n">Forward</th></tr>`;
+    const pq=Object.entries(B.players).filter(([id,p])=>p.passes>=25).sort((a,b)=>b[1].pass_difficulty_avg-a[1].pass_difficulty_avg).slice(0,5);
+    for(const [id,p] of pq)h+=`<tr><td>${p.name}</td><td class="n">${p.passes}</td><td class="n">${Math.round(100*p.passes_complete/p.passes)}%</td><td class="n">${p.pass_difficulty_avg}</td><td class="n">${p.progressive_passes}</td></tr>`;
     h+=`</table><h3>Momentum, 5-minute windows <span class="pill">control vs chaos</span></h3>`;
     for(const r of B.momentum){if(liveOnly&&r.start>clock)break;const hs=Math.round(r.home_share*100);h+=`<div class="mom"><span>${r.label.split('-')[0]}</span><div class="split"><i style="width:${hs}%;background:var(--home)"></i><i style="width:${100-hs}%;background:var(--away)"></i></div><span>${r.regime}</span></div>`}
     h+=`<p class="why">Share of danger created per window. Chaos = possession changes per minute above the match average.</p>`;
@@ -292,27 +315,28 @@ function renderPanel(){
     if(stops.length){h+=`<h3>His biggest stops</h3><table><tr><th>Time</th><th>Action</th><th class="n">Danger</th><th></th></tr>`;for(const r of stops){const m=B.moments.find(q=>q.evidence[0]===r.event_id);h+=`<tr><td>${fmt(r.t)}</td><td>${r.type}</td><td class="n">${r.danger_stopped}</td><td>${m?`<button data-jump="${m.rank}">watch</button> ${r.type==='interception'?`<button data-ghost="${m.rank}">without him</button>`:''}`:''}</td></tr>`}h+=`</table>`}
   }
   if(mode==='kid'){
-    const fp=B.fingerprints[focus]; const arche=fp.archetype;
-    h+=`<h2>Play like your idol</h2><p class="why">Pick a style. See what that player does, how he thinks, and what to practise.</p><div class="arch">`;
+    const fp=B.fingerprints[focus]; const pb=B.playbooks[focus]; const arche=fp.archetype;
+    h+=`<h2>Play like your idol</h2><p class="why">Pick a way of playing. See what it looks like on the pitch, what that player did today, and what to practise.</p><div class="arch">`;
     const byArch={};for(const [id,f] of Object.entries(B.fingerprints)){(byArch[f.archetype]=byArch[f.archetype]||[]).push(id)}
     for(const [k,a] of Object.entries(B.archetypes)){const ids=byArch[k]||[];if(!ids.length)continue;const best=ids.sort((x,y)=>B.fingerprints[y].archetype_scores[k]-B.fingerprints[x].archetype_scores[k])[0];
       h+=`<button data-arch="${best}" class="${focus===best?'on':''}"><b>${a.label}</b><span>${name(best)}</span></button>`}
-    h+=`</div><h3>${fp.archetype_label}: ${fp.name}</h3><p>${B.archetypes[arche].blurb}</p>`;
-    const hht=fp.how_he_thinks; const faw=hht.first_action_after_winning_ball||{}; const rz=hht.receives_in||{};
-    h+=`<h3>How he thinks</h3>`;
-    for(const [k,v] of Object.entries(faw).sort((a,b)=>b[1]-a[1]))h+=`<div class="hbar"><span>after winning it: ${k}</span><div class="bar"><i style="width:${Math.round(v*100)}%"></i></div><span>${Math.round(v*100)}%</span></div>`;
-    for(const [k,v] of Object.entries(rz).sort((a,b)=>b[1]-a[1]))h+=`<div class="hbar"><span>receives in ${k}</span><div class="bar"><i style="width:${Math.round(v*100)}%"></i></div><span>${Math.round(v*100)}%</span></div>`;
-    h+=`<div class="hbar"><span>releases the ball in</span><div class="bar"><i style="width:${Math.min(100,hht.time_to_release_s/6*100)}%"></i></div><span>${hht.time_to_release_s}s</span></div>`;
-    if(hht.screening_share>0.1)h+=`<div class="hbar"><span>screening the goal line</span><div class="bar"><i style="width:${Math.round(hht.screening_share*100)}%"></i></div><span>${Math.round(hht.screening_share*100)}%</span></div>`;
-    h+=`<h3>Best at</h3><p>${fp.strengths.map(s=>`${pretty(s.metric)} (${s.value})`).join(', ')}</p><h3>Could work on</h3><p>${fp.weaknesses.slice(0,2).map(s=>pretty(s.metric)).join(', ')}</p>`;
-    h+=`<h3>Drills</h3>`+(B.drills[arche]||[]).map(d=>`<div class="drill"><b>${d.name}</b><br>${d.how}</div>`).join('');
-    const best=B.threat_prevented.filter(r=>r.player===focus).sort((a,b)=>b.danger_stopped-a.danger_stopped)[0];
-    const bm=best&&B.moments.find(q=>q.evidence[0]===best.event_id);
-    if(bm)h+=`<p><button data-jump="${bm.rank}">See his best moment</button> ${best.type==='interception'?`<button data-ghost="${bm.rank}">What if he wasn't there</button>`:''}</p>`;
-    h+=storyBlock('kid',focus);
-    h+=`<h3>Compare your style</h3><p class="why">Put in a recent match. We match the shape of your game, not the size of the numbers.</p><div class="form">`;
-    for(const [k,l] of [['minutes','minutes played'],['passes','passes'],['passes_complete','passes completed'],['shots','shots'],['goals','goals'],['tackles_won','tackles won'],['interceptions','interceptions']])h+=`<div><label>${l}</label><input type="number" min="0" id="kid_${k}" value="${k==='minutes'?60:0}"></div>`;
+    h+=`</div><h3>${fp.archetype_label}: ${fp.name}</h3><p>${pb.intro}</p>`;
+    h+=`<h3>What playing like ${pb.first_name} looks like</h3><ol class="looks">`;
+    for(const l of pb.looks_like){const ev=l.evidence&&l.evidence[0];h+=`<li>${l.text}${ev?` <button data-ev="${ev}" title="jump to an example">see it</button>`:''}</li>`}
+    h+=`</ol>`;
+    h+=`<h3>His game today, the main points</h3>`;
+    if(!pb.main_points.length)h+=`<p class="why">Nothing stood out from him in this match.</p>`;
+    h+=`<div class="points">`;
+    for(const p of pb.main_points){const label={goal:'Goal',chance:'Chance',stop:p.detail.action==='interception'?'Cut it out':p.detail.action==='tackle'?'Won the tackle':'Blocked it',key_pass:'Key pass'}[p.kind];
+      h+=`<div class="point"><span class="cond min">${p.minute}'</span><div><b>${label}</b> ${p.why}</div><div class="row"><button data-jump="${p.rank}">Watch</button>${p.kind==='stop'&&p.detail.action==='interception'?`<button data-ghost="${p.rank}">Without him</button>`:''}</div></div>`}
+    h+=`</div>`;
+    h+=`<h3>Best at</h3><p>${pb.best_at.map(b=>b.friendly).join(', ')}.</p>`;
+    h+=`<h3>Train like him</h3>`+pb.train_like_him.map(d=>`<div class="drill"><b>${d.drill}</b> <span class="why">for ${d.friendly}</span><br>${d.how}</div>`).join('');
+    h+=`<h3>What he could work on</h3>`+pb.work_on.map(d=>`<div class="drill"><b>${d.drill}</b> <span class="why">for ${d.friendly}</span><br>${d.how}</div>`).join('');
+    h+=`<h3>Compare your style</h3><p class="why">Put in one of your recent matches. We match the shape of your game, not the size of the numbers.</p><div class="form">`;
+    for(const [k,l] of [['minutes','minutes played'],['passes','passes'],['passes_complete','passes completed'],['shots','shots'],['goals','goals'],['tackles_won','tackles won'],['interceptions','passes cut out']])h+=`<div><label>${l}</label><input type="number" min="0" id="kid_${k}" value="${k==='minutes'?60:0}"></div>`;
     h+=`</div><button id="matchStyle">Find my style</button><div id="styleOut"></div>`;
+    h+=`<h3>The story</h3>`+storyBlock('kid',focus);
   }
   P.innerHTML=h; wirePanel();
 }
@@ -342,6 +366,7 @@ function wirePanel(){
   P.querySelectorAll('[data-arch]').forEach(b=>b.onclick=()=>{focus=b.dataset.arch;renderPanel()});
   const f=$('#focus');if(f)f.onchange=()=>{focus=f.value;renderPanel()};
   const l=$('#lang');if(l)l.onchange=()=>{lang=l.value;renderPanel()};
+  const c=$('#club');if(c)c.onchange=()=>{club=c.value;renderPanel()};
   const ms=$('#matchStyle');if(ms)ms.onclick=matchStyle;
 }
 function showCounterfactual(m){

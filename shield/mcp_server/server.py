@@ -89,6 +89,14 @@ def get_player_fingerprint(player_id: str, clock_seconds: float | None = None) -
 
 
 @mcp.tool()
+def get_playbook(player_id: str) -> dict:
+    """Play-like-your-idol playbook for one player: what playing like him looks like
+    (plain words, with evidence), his main points from this match (clickable moments),
+    what he is best at, drills to train like him, and what to work on."""
+    return state(None).playbook(player_id)
+
+
+@mcp.tool()
 def list_players() -> list[dict]:
     """All players with id, name, team, role, number and archetype."""
     st = state(None)

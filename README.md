@@ -33,7 +33,26 @@ For every interception, tackle or block, the player is credited with the danger 
 
 ### Play like your idol
 
-For coaches and 9 to 14 year olds. Pick an archetype (The Shield, The Metronome, The Creator…), see how that player thinks (where he receives, first action after winning the ball, how fast he releases, how much he screens the goal), his best attributes, what to work on, and drills. Enter a kid's simple match stats and it finds the archetype whose *shape* they resemble. Style, not level.
+For coaches and 9 to 14 year olds. Pick a way of playing (The Shield, The Metronome, The Creator…) and the playbook engine (`shield/engine/playbook.py`) writes, in plain words and with evidence for every line:
+
+- **what playing like him looks like**: where he stands, what he does first when he wins the ball, where he asks for the ball, how quickly he moves it on;
+- **his game today, the main points**: his key moments from the match, in order, each one clickable onto the pitch replay with a freeze-frame (the pass he cut out, the key pass he played, the shot) and, for interceptions, an empirical "without him" counterfactual;
+- **best at, train like him, what he could work on**: a drill for each, chosen from the metric, not generic.
+
+Enter a kid's simple match stats and it finds the archetype whose *shape* they resemble. Style, not level.
+
+### What the brief asks for, where it lives
+
+| Brief | Where |
+|---|---|
+| Player identification, speed and distance indicators on thresholds | name tags on the pitch above 7.5 m/s; overlay items for a new fastest sprint and for 10 km covered |
+| Pass quality: distance, accuracy, difficulty | every pass event carries all three; Analyst mode has a pass quality table; key passes are moments |
+| Ball speed and shot speed | on pass and shot events, shown in captions and freeze-frames |
+| Narratives, milestones, recaps | Narrator agent from the fact packet; Fan, Analyst and Player focus modes |
+| Explainability: control vs chaos, pressure, rhythm | 5-minute momentum windows with a regime label and pressure counts; every fact carries event IDs; the Verifier rejects anything unsupported |
+| Data innovation | the generator, with a planted archetype and a control run |
+| Multi-language | Personalizer agent; needs a Foundry model endpoint |
+| Favourite club, favourite player, player-focused mode | Fan mode has a club selector; Player focus and idol modes follow one player |
 
 ## Microsoft technologies
 

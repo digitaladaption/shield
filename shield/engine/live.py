@@ -47,6 +47,12 @@ class LiveTracker:
             self._cur_poss, self._cur_poss_team = e["possession_id"], e["team"]
         elif e["type"] == "pass":
             self.per_player[pid]["passes"] += 1
+            if e["outcome"] == "complete":
+                gain = e["danger_intended"] - e["danger_before"]
+                if gain >= 0.3 or (e["difficulty"] >= 65 and e["progressive"] and gain >= 0.15):
+                    kind, detail = "key_pass", {"danger_gain": round(gain, 3), "receiver": e["receiver"], "distance": e["distance"],
+                                                "pass_speed": e["speed"], "difficulty": e["difficulty"],
+                                                "end_x": e["end_x"], "end_y": e["end_y"]}
         elif e["type"] == "shot":
             self.shots[e["team"]] += 1
             self.xg[e["team"]] += e["xg"]
@@ -80,6 +86,8 @@ class LiveTracker:
             return None
         if kind == "goal":
             text = f"GOAL {nm} (xG {detail['xg']})"
+        elif kind == "key_pass":
+            text = f"{nm} key pass: {detail['distance']} m at {detail['pass_speed']} m/s, difficulty {detail['difficulty']}"
         elif kind == "chance":
             text = f"{nm} shot, xG {detail['xg']}"
         else:

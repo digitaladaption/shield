@@ -255,9 +255,15 @@ class Match:
         shift = (bu - 0.5) * 0.55 * w
         u = p.au + shift + (0.04 * w if in_poss else -0.03 * w)
         v = p.av + (bv - p.av) * 0.18
-        u = clamp(u, 0.03, 0.95)
+        u = clamp(u, 0.03, 0.92)
         x, y = self.to_world(p.team, u, v)
-        return x + p.ox, y + p.oy
+        x += p.ox
+        if in_poss and self.carrier is not p and hasattr(self, "_off"):
+            d = self.dir(p.team)
+            lim = self._off[p.team] - d * 1.0   # stay a metre onside
+            if (x - lim) * d > 0:
+                x = lim
+        return x, y + p.oy
 
     def _shield_target(self, p):
         gx, gy = self.own_goal(p.team)
@@ -287,9 +293,18 @@ class Match:
         elif p.speed < 6.0:
             p.sprinting = False
 
+    def offside_line(self, team):
+        """x beyond which an attacker of `team` would be offside: the second-last opponent."""
+        d = self.dir(team)
+        xs = sorted((o.x for o in self.team_players[self.other(team)]), key=lambda x: -x * d)
+        line = xs[1] if len(xs) > 1 else xs[0]
+        bx = self.ball[0]
+        return max(line * d, bx * d) * d   # never behind the ball
+
     def update_players(self):
         poss_team = self.carrier.team if self.carrier else self.flight["team"]
         bx, by = self.ball
+        self._off = {HOME: self.offside_line(HOME), AWAY: self.offside_line(AWAY)}
         chasers = set()
         for team in (HOME, AWAY):
             if team == poss_team:
@@ -507,7 +522,7 @@ class Match:
         gx, gy = self.goal_of(c.team)
         dist_goal = math.hypot(gx - c.x, gy - c.y)
         tu, _ = self.to_team_frame(c.team, c.x, c.y)
-        if c.role != "GK" and dist_goal < 27 and tu > 0.68 and \
+        if c.role != "GK" and 5.5 <= dist_goal < 27 and tu > 0.68 and \
                 self.rng.random() < (0.07 if dist_goal < 20 else 0.015):
             self.do_shot(c)
         elif c.role != "GK" and self.rng.random() < 0.27:

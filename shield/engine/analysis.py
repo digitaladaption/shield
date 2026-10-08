@@ -362,8 +362,10 @@ class MatchState:
         poss_team_at = self._possession_team_lookup()
         L, W = self.eng.L, self.eng.W
         acc = {pid: {"dist": 0.0, "sprints": 0, "sprinting": False, "top": 0.0, "screen": 0, "deft": 0,
-                     "sx": 0.0, "sy": 0.0} for pid in self.player_stats}
+                     "sx": 0.0, "sy": 0.0, "km_flag": 0} for pid in self.player_stats}
         prev = None
+        match_top = 7.5          # a new match-high sprint above this is a milestone
+        self.milestones = []
         for i in range(n):
             fr = frames[i]
             pt = poss_team_at(fr.t)
@@ -377,7 +379,15 @@ class MatchState:
                     step = math.hypot(x - px, y - py)
                     a["dist"] += step
                     sp = step / tick
+                    if sp > match_top and sp >= 8.0 and sp < 12.0:
+                        match_top = sp
+                        self.milestones.append({"t": fr.t, "player": pid, "kind": "top_speed", "value": round(sp, 1),
+                                                "x": x, "y": y})
                     a["top"] = max(a["top"], sp)
+                    km = int(a["dist"] // 1000)
+                    if km == 10 and km > a["km_flag"]:
+                        a["km_flag"] = km
+                        self.milestones.append({"t": fr.t, "player": pid, "kind": "distance", "value": km, "x": x, "y": y})
                     a["fast"] = a.get("fast", 0) + 1 if sp >= 7.0 else 0
                     if a["fast"] >= 3 and not a["sprinting"]:   # 1.5 s above 7 m/s counts as a sprint
                         a["sprints"] += 1
@@ -571,14 +581,29 @@ class MatchState:
                     moments.append(self._moment(kind, e, score, [e["id"]],
                                                 {"xg": e["xg"], "outcome": e["outcome"], "distance": e["distance"],
                                                  "shot_speed": e["speed"]}))
+            elif t == "pass" and e["outcome"] == "complete":
+                gain = e["danger_intended"] - e["danger_before"]
+                if gain >= 0.3 or (e["difficulty"] >= 65 and e["progressive"] and gain >= 0.15):
+                    score = gain * 1.6 + e["difficulty"] / 250.0
+                    moments.append(self._moment("key_pass", e, score, [e["id"]],
+                                                {"danger_gain": round(gain, 3), "danger_before": e["danger_before"],
+                                                 "danger_after": e["danger_intended"], "receiver": e["receiver"],
+                                                 "distance": e["distance"], "pass_speed": e["speed"],
+                                                 "difficulty": e["difficulty"], "end_x": e["end_x"], "end_y": e["end_y"]}))
             elif e["id"] in tp_by_event:
                 r = tp_by_event[e["id"]]
-                score = r["danger_stopped"] * 1.2 + r["xg_prevented"] * 6.0
+                score = r["danger_stopped"] * 1.6 + r["xg_prevented"] * 6.0
                 if r["danger_stopped"] >= 0.2:
                     ev = [e["id"]] + ([e["pass_id"]] if t == "interception" else [])
                     moments.append(self._moment("stop", e, score, ev,
                                                 {"danger_stopped": r["danger_stopped"], "xg_prevented": r["xg_prevented"],
                                                  "action": t, "basis": r["basis"]}))
+        for ms in getattr(self, "milestones", []):
+            if ms["t"] > self.t_end:
+                continue
+            moments.append({"kind": "milestone", "t": ms["t"], "minute": int(ms["t"] // 60), "team": self.data.team_of(ms["player"]),
+                            "player": ms["player"], "score": 0.3, "evidence": [],
+                            "detail": {"milestone": ms["kind"], "value": ms["value"]}, "x": ms["x"], "y": ms["y"]})
         # momentum shifts
         prev = None
         for r in self.momentum:
@@ -679,6 +704,12 @@ class MatchState:
             if s["danger_created"] >= 1.0:
                 self._fact(f"{nm} created {round(s['danger_created'], 2)} danger with his passing ({s['progressive_passes']} progressive passes)",
                            round(s["danger_created"], 2), s["evidence"]["progressive_passes"], ["attack", "creation"], player=pid, team=s["team"])
+            if s["passes"] >= 25 and s["pass_difficulty"]:
+                diff = round(statistics.mean(s["pass_difficulty"]), 0)
+                acc = round(100 * s["passes_complete"] / s["passes"])
+                if diff >= 38 or acc >= 90:
+                    self._fact(f"{nm} completed {acc}% of {s['passes']} passes at an average difficulty of {int(diff)} out of 100",
+                               acc, s["evidence"]["progressive_passes"][:10], ["attack", "pass_quality"], player=pid, team=s["team"])
             if s.get("distance_km", 0) >= 11.5:
                 self._fact(f"{nm} covered {s['distance_km']} km with {s['sprints']} sprints", s["distance_km"], [],
                            ["physical"], player=pid, team=s["team"])
@@ -695,6 +726,12 @@ class MatchState:
             elif m["kind"] == "chance":
                 self._fact(f"Chance {mmss(m['t'])}: {nm} shot from {d['distance']} m, xG {d['xg']}, {d['outcome'].replace('_', ' ')}",
                            d["xg"], m["evidence"], ["moment", "chance"], player=m["player"], team=m["team"], t=m["t"])
+            elif m["kind"] == "key_pass":
+                self._fact(f"Key pass {mmss(m['t'])}: {nm} found {self.data.name_of(d['receiver'])} with a {d['distance']} m pass, danger {d['danger_before']} to {d['danger_after']}, difficulty {d['difficulty']}",
+                           d["danger_gain"], m["evidence"], ["moment", "key_pass"], player=m["player"], team=m["team"], t=m["t"])
+            elif m["kind"] == "milestone":
+                what = f"hit {d['value']} m/s, the fastest sprint of the match so far" if d["milestone"] == "top_speed" else f"passed {d['value']} km covered"
+                self._fact(f"{mmss(m['t'])}: {nm} {what}", d["value"], [], ["moment", "physical"], player=m["player"], team=m["team"], t=m["t"])
             elif m["kind"] == "stop":
                 self._fact(f"Stop {mmss(m['t'])}: {nm} {d['action']} with danger {d['danger_stopped']} stopped, about {d['xg_prevented']} xG prevented",
                            d["danger_stopped"], m["evidence"], ["moment", "stop"], player=m["player"], team=m["team"], t=m["t"])
@@ -717,6 +754,15 @@ class MatchState:
         if window:
             a, b = window
             facts = [f for f in facts if f.t is None or a <= f.t <= b]
+        # order by importance so truncation never drops the score or the big moments
+        prio = {"score": 0, "goal": 1, "moment": 2, "shots": 3, "possession": 3, "threat_prevented": 4, "attacks_ended": 4,
+                "creation": 5, "interceptions": 5, "pass_quality": 6, "positioning": 6, "rhythm": 7, "physical": 9}
+        def rank(f):
+            r = min((prio.get(t, 8) for t in f.tags), default=8)
+            if "moment" in f.tags and "goal" not in f.tags:
+                r = 2 + min(0.9, self.facts.index(f) / 1000)  # keep moment order
+            return r
+        facts = sorted(facts, key=rank)
         if player_focus:
             focus = [f for f in facts if f.player == player_focus]
             rest = [f for f in facts if f.player != player_focus and ("moment" in f.tags or "score" in f.tags)]
@@ -785,7 +831,11 @@ class MatchState:
             if m["kind"] == "goal":
                 text = f"GOAL {nm} (xG {d['xg']})"
             elif m["kind"] == "chance":
-                text = f"{nm} shot, xG {d['xg']}"
+                text = f"{nm} shot, xG {d['xg']}, {d['shot_speed']} m/s"
+            elif m["kind"] == "key_pass":
+                text = f"{nm} key pass to {self.data.name_of(d['receiver'])}: {d['distance']} m at {d['pass_speed']} m/s, difficulty {d['difficulty']}"
+            elif m["kind"] == "milestone":
+                text = f"{nm} {d['value']} m/s, fastest of the match" if d["milestone"] == "top_speed" else f"{nm} {d['value']} km covered"
             elif m["kind"] == "stop":
                 text = f"{nm} {d['action']}: danger {d['danger_stopped']} stopped"
             elif m["kind"] == "momentum_shift":
@@ -806,13 +856,14 @@ class MatchState:
             "clock": self.t_end,
             "score": self.score,
             "teams": self.team_stats,
-            "players": {pid: {k: v for k, v in s.items() if k not in ("pass_difficulty", "time_to_release", "evidence",
-                                                                      "first_action_after_win", "receive_zone")}
+            "players": {pid: {**{k: v for k, v in s.items() if k not in ("pass_difficulty", "time_to_release", "evidence",
+                                                                         "first_action_after_win", "receive_zone")},
+                              "pass_difficulty_avg": round(statistics.mean(s["pass_difficulty"]), 1) if s["pass_difficulty"] else 0.0}
                         for pid, s in self.player_stats.items()},
             "fingerprints": self.fingerprints,
             "threat_prevented": self.threat_prevented,
             "momentum": self.momentum,
-            "moments": self.moments[:40],
+            "moments": self.moments[:80],
             "facts": [f.to_dict() for f in self.facts],
             "xg_curve": self.xg_curve_table,
             "possessions": [{"id": p.id, "team": p.team, "start_t": p.start_t, "end_t": p.end_t,
@@ -820,7 +871,12 @@ class MatchState:
                              "end_event_id": p.end_event_id, "xg": round(p.xg, 3), "passes": p.passes}
                             for p in self.possessions],
             "overlay": self.overlay_items(),
+            "playbooks": {pid: self.playbook(pid) for pid in self.fingerprints},
         }
+
+    def playbook(self, pid: str) -> dict:
+        from .playbook import build_playbook
+        return build_playbook(self, pid)
 
 
 def _dist_to_segment(px, py, ax, ay, bx, by):

@@ -43,3 +43,23 @@ def test_counterfactual_is_empirical():
     assert cf["sample_possessions"] > 0
     assert 0 <= cf["goal_rate_from_here"] <= cf["shot_rate_from_here"] <= 1
     assert "intended_pass" in cf
+
+
+def test_playbook_is_clickable_and_in_plain_words():
+    st = Engine(load_match(MATCH)).snapshot()
+    pb = st.playbook("H06")
+    assert pb["archetype"] == "Shield"
+    assert 3 <= len(pb["looks_like"]) <= 6
+    assert pb["main_points"], "the idol must have main points from the match"
+    for p in pb["main_points"]:
+        assert p["evidence"] and p["evidence"][0] in st.by_id   # every point jumps to a real event
+        assert p["why"]
+    assert all("_p90" not in w["friendly"] for w in pb["work_on"])
+    assert all(w["drill"] for w in pb["work_on"])
+
+
+def test_fact_packet_keeps_score_and_goal_under_truncation():
+    st = Engine(load_match(MATCH)).snapshot()
+    pk = st.fact_packet(max_facts=8)
+    tags = [t for f in pk["facts"] for t in f["tags"]]
+    assert "score" in tags and "goal" in tags
