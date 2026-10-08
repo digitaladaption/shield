@@ -65,6 +65,11 @@ def player(pid: str, clock: float | None = None):
     return st.fingerprints.get(pid) or {"error": "unknown player"}
 
 
+@app.get("/api/see/{pid}")
+def see(pid: str, clock: float):
+    return _engine.snapshot(None).see(clock, pid)
+
+
 @app.get("/api/counterfactual/{event_id}")
 def counterfactual(event_id: str):
     return _engine.snapshot(None).counterfactual(event_id)

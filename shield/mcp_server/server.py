@@ -97,6 +97,15 @@ def get_playbook(player_id: str) -> dict:
 
 
 @mcp.tool()
+def what_he_sees(player_id: str, clock_seconds: float) -> dict:
+    """One player's view of the pitch at one instant: as carrier, every passing lane
+    (open / contested / blocked, difficulty, danger gain) and the best option; as a
+    defender, the lanes he is closing, whether he is between ball and goal, tackle range,
+    who he is marking. Includes a one-line plain-words read."""
+    return state(None).see(clock_seconds, player_id)
+
+
+@mcp.tool()
 def list_players() -> list[dict]:
     """All players with id, name, team, role, number and archetype."""
     st = state(None)

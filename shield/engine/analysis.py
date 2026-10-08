@@ -878,6 +878,13 @@ class MatchState:
         from .playbook import build_playbook
         return build_playbook(self, pid)
 
+    def see(self, t: float, pid: str) -> dict:
+        """What one player sees at time t: lanes, wedge, range, a one-line read."""
+        from .vision import VisionEngine
+        if not hasattr(self, "_vision"):
+            self._vision = VisionEngine(self.data, self.possessions)
+        return self._vision.see(t, pid)
+
 
 def _dist_to_segment(px, py, ax, ay, bx, by):
     abx, aby = bx - ax, by - ay

@@ -93,6 +93,9 @@
   .cf{background:var(--bg2);border-radius:6px;padding:10px 12px;margin-top:8px;font-size:14px}
   .cf b.big{font-family:"Barlow Condensed";font-size:28px;font-weight:600;margin-right:6px}
   .loading{padding:40px;color:var(--mute)}
+  .vbox{position:absolute;left:28px;bottom:118px;max-width:44%;background:rgba(21,27,36,.9);border-left:3px solid #7bc9a0;padding:8px 12px;font-size:13px;pointer-events:none;opacity:0;transition:opacity .2s}
+  .vbox.show{opacity:1} .vbox.right{left:auto;right:12px} .vbox b{font-family:"Barlow Condensed";font-size:17px;font-weight:600;display:block;margin-bottom:2px} .vbox .opt{display:flex;gap:8px;color:var(--mute)} .vbox .opt i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-top:5px} .vbox .k{color:var(--ink)}
+  canvas{cursor:crosshair}
   ol.looks{padding-left:20px;margin:4px 0;max-width:62ch} ol.looks li{margin:4px 0} ol.looks button{padding:0 6px;font-size:12px;border-color:transparent;color:var(--amber)}
   .points{display:grid;gap:6px;margin:6px 0} .point{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:start;border-top:1px solid var(--line);padding-top:6px;font-size:14px} .point .min{font-size:22px;font-weight:600;line-height:1} .point .row{margin:0}
   .tag{position:absolute;pointer-events:none}
@@ -111,6 +114,7 @@
     <button id="spd1" class="on">1×</button><button id="spd4">4×</button><button id="spd16">16×</button>
     <button id="live" title="Hide anything the engine has not seen yet">Live</button>
     <button id="feed" title="Stream the match from the server as a live feed">Live feed</button>
+    <button id="see" class="on" title="Click any player on the pitch to see what he sees">What he sees</button>
     <span class="pill" id="feedStatus" hidden></span>
   </div>
   <nav class="tabs" aria-label="Viewing mode">
@@ -124,6 +128,7 @@
   <section class="stage">
     <canvas id="pitch" width="1050" height="680" aria-label="Pitch replay"></canvas>
     <div class="caption" id="caption"></div>
+    <div class="vbox" id="vbox"></div>
     <input class="scrub" type="range" id="scrub" min="0" max="5399" value="0" aria-label="Match clock">
     <div class="timeline" id="timeline"></div>
     <div class="legend"><span><i style="background:var(--amber)"></i>goal</span><span><i style="background:var(--home);opacity:.7"></i>chance</span><span><i style="background:var(--ok)"></i>attack stopped</span><span><i style="border:2px solid var(--amber)"></i>key pass</span><span><i style="border:1px solid var(--mute)"></i>momentum / chaos</span></div>
@@ -135,6 +140,7 @@ const $=s=>document.querySelector(s);
 let B=null, clock=0, playing=false, speed=1, mode='casual', focus='H06', lang='en', liveOnly=true, lastTs=0;
 let freeze=null; // {moment, ghost:0..1 or null}
 let feed=null, feedItem=null, feedStats={engine:null,narr:null,n:0}; let club='home';
+let sel=null, visionOn=true, lastV=null, lastVboxAt=0;
 const fmt=t=>`${String(Math.floor(t/60)).padStart(2,'0')}:${String(Math.floor(t%60)).padStart(2,'0')}`;
 const name=pid=>B.meta.players.find(p=>p.id===pid)?.name||pid;
 const short=pid=>{const n=name(pid).split(' ');return n[n.length-1]};
@@ -152,6 +158,9 @@ function init(){
   $('#live').onclick=()=>{liveOnly=!liveOnly;$('#live').classList.toggle('on',liveOnly);lastTickSec=-1;renderPanel()};
   $('#scrub').oninput=e=>{clock=+e.target.value;freeze=null;renderPanel()};
   $('#feed').onclick=toggleFeed;
+  $('#see').onclick=()=>{visionOn=!visionOn;$('#see').classList.toggle('on',visionOn);if(visionOn&&!sel)sel=focus;if(!visionOn)$('#vbox').classList.remove('show')};
+  $('#pitch').onclick=e=>{const r=$('#pitch').getBoundingClientRect();const px=(e.clientX-r.left)*PW/r.width,py=(e.clientY-r.top)*PH/r.height;const x=(px-PAD)/(PW-2*PAD)*L,y=(py-PAD)/(PH-2*PAD)*W;const row=frameAt(clock);let best=null,bd=2.6;for(const pid of B.frames.ids){const [qx,qy]=pos(row,pid);const d=Math.hypot(qx-x,qy-y);if(d<bd){best=pid;bd=d}}
+    if(best){sel=best;visionOn=true;$('#see').classList.add('on');if(mode==='player'||mode==='kid'){if(B.fingerprints[best]){focus=best;renderPanel()}}}else{sel=null;$('#vbox').classList.remove('show')}};
   document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{mode=b.dataset.mode;document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));renderPanel()});
   renderPanel();
   requestAnimationFrame(loop);
@@ -206,10 +215,13 @@ function draw(){
     for(let t=Math.max(0,clock-8);t<=clock;t+=0.5){const r=frameAt(t);const [x,y]=pos(r,focus);t===Math.max(0,clock-8)?C.moveTo(sx(x),sy(y)):C.lineTo(sx(x),sy(y))}C.stroke();}
   // freeze frame extras
   if(freeze) drawFreeze(row);
+  // what he sees
+  if(sel&&visionOn){lastV=vision(clock,sel);drawVision(lastV,row);if(performance.now()-lastVboxAt>250){lastVboxAt=performance.now();updateVbox(lastV)}}
   // players
   for(const pid of B.frames.ids){const [x,y]=pos(row,pid);const p=B.meta.players.find(q=>q.id===pid);
     const isF=(mode==='player'||mode==='kid')&&pid===focus;
     if(isF){C.beginPath();C.arc(sx(x),sy(y),16,0,7);C.strokeStyle='#f2b35b';C.lineWidth=3;C.stroke();}
+    if(sel===pid&&visionOn){C.beginPath();C.arc(sx(x),sy(y),14,0,7);C.strokeStyle='#7bc9a0';C.lineWidth=2.5;C.stroke();}
     C.beginPath();C.arc(sx(x),sy(y),p.role==='GK'?9:10,0,7);
     C.fillStyle=p.team==='home'?(p.role==='GK'?'#d9c27a':'#f3efe6'):(p.role==='GK'?'#9bb3d1':'#6f8fb8');C.fill();
     C.fillStyle=p.team==='home'?'#1a1408':'#0f1620';C.font='600 11px "Barlow Condensed"';C.textAlign='center';C.textBaseline='middle';C.fillText(p.number,sx(x),sy(y)+.5);
@@ -355,6 +367,67 @@ function toggleFeed(){
   feed.addEventListener('end',()=>{st.textContent='feed ended · full time';feed.close();feed=null;});
   feed.onerror=()=>{st.textContent='feed unavailable: run the server (uvicorn shield.server:app), the static page has no stream'};
 }
+
+// ---------------- what he sees (mirror of shield/engine/vision.py)
+const LANE_REACH=3.0, CONTEST_REACH=5.0, TACKLE_REACH=2.2, POST=3.66;
+const meta=pid=>B.meta.players.find(p=>p.id===pid);
+function seg(px,py,ax,ay,bx,by){const abx=bx-ax,aby=by-ay,ab2=abx*abx+aby*aby;if(!ab2)return [Math.hypot(px-ax,py-ay),0];const t=((px-ax)*abx+(py-ay)*aby)/ab2,tc=Math.max(0,Math.min(1,t));return [Math.hypot(px-(ax+abx*tc),py-(ay+aby*tc)),t]}
+function inTri(px,py,ax,ay,bx,by,cx_,cy_){const s=(x1,y1,x2,y2,x3,y3)=>(x1-x3)*(y2-y3)-(x2-x3)*(y1-y3);const d1=s(px,py,ax,ay,bx,by),d2=s(px,py,bx,by,cx_,cy_),d3=s(px,py,cx_,cy_,ax,ay);return !((d1<0||d2<0||d3<0)&&(d1>0||d2>0||d3>0))}
+function possTeamAt(t){for(const p of B.possessions){if(p.start_t<=t&&t<=p.end_t)return p.team}return null}
+const goalOf=team=>[team==='home'?L:0,W/2], ownGoal=team=>[team==='home'?0:L,W/2], dirn=team=>team==='home'?1:-1;
+function dangerAt(team,x,y,row){const d=dirn(team);const [gx,gy]=goalOf(team);const dist=Math.hypot(gx-x,gy-y);const base=Math.exp(-dist/20);let att=0,de=0;
+  for(const pid of B.frames.ids){const m=meta(pid);const [px,py]=pos(row,pid);if(m.team===team){if(m.role!=='GK'&&(px-x)*d>0&&Math.hypot(px-x,py-y)<25)att++}else{if((px-x)*d>0&&Math.abs(py-y)<20&&(px-x)*d<30)de++}}
+  return Math.round(Math.min(1,base*(1+0.08*att)/(1+0.18*de))*1000)/1000}
+function carrierAt(row,team){if(!team)return null;const [bx,by]=[row[1],row[2]];let best=null,bd=99;for(const pid of B.frames.ids){if(meta(pid).team!==team)continue;const [x,y]=pos(row,pid);const d=Math.hypot(x-bx,y-by);if(d<bd){best=pid;bd=d}}return bd<=6?best:null}
+function laneJS(row,frm,to){const team=meta(frm).team;const [ax,ay]=pos(row,frm),[bx,by]=pos(row,to);const dist=Math.hypot(bx-ax,by-ay);let closest=null,closer=99,laneP=0,oppNear=99;
+  for(const pid of B.frames.ids){const m=meta(pid);const [x,y]=pos(row,pid);if(m.team!==team){oppNear=Math.min(oppNear,Math.hypot(x-bx,y-by));if(m.role==='GK')continue;const [ds,tp]=seg(x,y,ax,ay,bx,by);if(tp>0.1&&tp<0.95){if(ds<closer){closest=pid;closer=ds}if(ds<LANE_REACH)laneP+=0.07*(1-ds/LANE_REACH)}}}
+  const difficulty=Math.round(100*Math.min(1,0.45*Math.min(dist/45,1)+0.3*(1-Math.min(oppNear,12)/12)+0.25*Math.min(1,laneP*3)));
+  const state=closer<LANE_REACH?'blocked':closer<CONTEST_REACH?'contested':'open';const d0=dangerAt(team,ax,ay,row),d1=dangerAt(team,bx,by,row);
+  return {to,to_name:name(to),distance:Math.round(dist*10)/10,state,closest,closest_m:closest?Math.round(closer*10)/10:null,receiver_space_m:Math.round(oppNear*10)/10,difficulty,danger_now:d0,danger_if_arrives:d1,gain:Math.round((d1-d0)*1000)/1000,from_xy:[ax,ay],to_xy:[bx,by]}}
+function vision(t,pid){const row=frameAt(t);const m=meta(pid);const team=m.team;const poss=possTeamAt(t);const [x,y]=pos(row,pid);const [bx,by]=[row[1],row[2]];
+  const out={t,player:pid,name:m.name,team,role:m.role,xy:[x,y],ball:[bx,by],in_possession:poss===team,dist_to_ball:Math.round(Math.hypot(x-bx,y-by)*10)/10};
+  const carrier=carrierAt(row,poss);
+  if(poss===team&&carrier===pid){const lanes=[];const [ogx]=ownGoal(team);
+    for(const q of B.frames.ids){if(q===pid||meta(q).team!==team)continue;const [qx,qy]=pos(row,q);const dist=Math.hypot(qx-x,qy-y);if(dist<4||dist>(m.role==='GK'?65:42))continue;if(meta(q).role==='GK'&&Math.abs(x-ogx)>35)continue;lanes.push(laneJS(row,pid,q))}
+    lanes.sort((a,b)=>b.gain-a.gain);const open=lanes.filter(l=>l.state==='open');const best=open.length?open.reduce((a,b)=>b.gain>a.gain?b:a):null;
+    const pressure=B.frames.ids.filter(q=>meta(q).team!==team&&meta(q).role!=='GK'&&Math.hypot(pos(row,q)[0]-x,pos(row,q)[1]-y)<3.5);
+    Object.assign(out,{view:'carrier',lanes,options:lanes.length,open:open.length,blocked:lanes.filter(l=>l.state==='blocked').length,best,under_pressure_from:pressure,danger_here:dangerAt(team,x,y,row)});
+    out.read=best?`${m.name} has ${lanes.length} options, ${open.length} open. Best: ${short(best.to)}, danger ${best.danger_now} to ${best.danger_if_arrives}, difficulty ${best.difficulty}.`:`${m.name} has ${lanes.length} options and none open. Keep it or carry.`;
+    if(pressure.length)out.read+=` Pressed by ${pressure.map(short).join(', ')}.`;return out}
+  if(poss&&poss!==team){const closing=[];
+    if(carrier){const [cxp,cyp]=pos(row,carrier);for(const q of B.frames.ids){if(q===carrier||meta(q).team!==poss)continue;const [qx,qy]=pos(row,q);if(Math.hypot(qx-cxp,qy-cyp)<4)continue;const [ds,tp]=seg(x,y,cxp,cyp,qx,qy);if(tp>0.1&&tp<0.95&&ds<CONTEST_REACH)closing.push({to:q,to_name:name(q),from_xy:[cxp,cyp],to_xy:[qx,qy],my_distance_to_lane:Math.round(ds*10)/10,state:ds<LANE_REACH?'closed':'contested',danger_if_arrives:dangerAt(poss,qx,qy,row)})}}
+    const [gx,gy]=ownGoal(team);const inWedge=inTri(x,y,bx,by,gx,gy-POST,gx,gy+POST);const [dline]=seg(x,y,bx,by,gx,gy);
+    let marking=null,md=99;for(const q of B.frames.ids){if(meta(q).team!==poss||meta(q).role==='GK')continue;const [qx,qy]=pos(row,q);const d=Math.hypot(qx-x,qy-y);if(d<md){marking=q;md=d}}
+    closing.sort((a,b)=>b.danger_if_arrives-a.danger_if_arrives);
+    Object.assign(out,{view:'defender',carrier,closing,in_goal_wedge:inWedge,distance_to_ball_goal_line:Math.round(dline*10)/10,can_tackle:Math.hypot(x-bx,y-by)<=TACKLE_REACH,marking,marking_m:Math.round(md*10)/10,wedge:{ball:[bx,by],posts:[[gx,gy-POST],[gx,gy+POST]]}});
+    const closed=closing.filter(c=>c.state==='closed');const bits=[];
+    if(closed.length)bits.push(`closing ${closed.length} lane${closed.length!==1?'s':''} (most dangerous: to ${short(closed[0].to)}, danger ${closed[0].danger_if_arrives})`);
+    bits.push(inWedge?'between the ball and his goal':`${Math.round(dline)} m off the ball-to-goal line`);
+    if(out.can_tackle)bits.push('in tackling range');else if(out.dist_to_ball<8)bits.push(`${out.dist_to_ball} m from the ball`);
+    out.read=`${m.name}: ${bits.join(', ')}.`;return out}
+  let space=99;for(const q of B.frames.ids){if(meta(q).team===team)continue;const [qx,qy]=pos(row,q);space=Math.min(space,Math.hypot(qx-x,qy-y))}
+  Object.assign(out,{view:'attacker',space_m:Math.round(space*10)/10,danger_here:dangerAt(team,x,y,row)});
+  if(carrier&&carrier!==pid&&meta(carrier).team===team){out.lane_from_carrier=laneJS(row,carrier,pid);out.carrier=carrier;out.read=`${m.name} is ${out.lane_from_carrier.state} for a pass from ${short(carrier)}, ${out.space_m} m of space, danger here ${out.danger_here}.`}
+  else out.read=`${m.name} has ${out.space_m} m of space, danger here ${out.danger_here}.`;
+  return out}
+const laneColor={open:'rgba(123,201,160,.9)',contested:'rgba(242,179,91,.9)',blocked:'rgba(255,106,77,.9)',closed:'rgba(123,201,160,.95)'};
+function drawVision(v,row){const [x,y]=v.xy;
+  if(v.view==='carrier'){for(const l of v.lanes){const best=v.best&&l.to===v.best.to;C.setLineDash(l.state==='open'?[]:[5,5]);C.strokeStyle=laneColor[l.state];C.lineWidth=best?4:1.8;C.beginPath();C.moveTo(sx(l.from_xy[0]),sy(l.from_xy[1]));C.lineTo(sx(l.to_xy[0]),sy(l.to_xy[1]));C.stroke();C.setLineDash([]);
+      if(l.state==='blocked'&&l.closest){const [qx,qy]=pos(row,l.closest);C.beginPath();C.arc(sx(qx),sy(qy),13,0,7);C.strokeStyle='rgba(255,106,77,.8)';C.lineWidth=2;C.stroke()}
+      if(best||l.state!=='open'){C.fillStyle=laneColor[l.state];C.font='600 11px "Barlow Condensed"';C.textAlign='center';const mx=(l.from_xy[0]+l.to_xy[0])/2,my=(l.from_xy[1]+l.to_xy[1])/2;C.fillText(best?`best · ${l.difficulty}`:`${l.difficulty}`,sx(mx),sy(my)-6)}}
+    if(v.under_pressure_from.length){C.beginPath();C.arc(sx(x),sy(y),3.5/L*(PW-2*PAD),0,7);C.strokeStyle='rgba(255,106,77,.6)';C.lineWidth=1.5;C.setLineDash([3,4]);C.stroke();C.setLineDash([])}}
+  else if(v.view==='defender'){const w=v.wedge;C.beginPath();C.moveTo(sx(w.ball[0]),sy(w.ball[1]));C.lineTo(sx(w.posts[0][0]),sy(w.posts[0][1]));C.lineTo(sx(w.posts[1][0]),sy(w.posts[1][1]));C.closePath();C.fillStyle=v.in_goal_wedge?'rgba(123,201,160,.16)':'rgba(255,106,77,.12)';C.fill();
+    for(const c of v.closing){C.setLineDash([5,5]);C.strokeStyle=c.state==='closed'?'rgba(255,106,77,.85)':'rgba(242,179,91,.7)';C.lineWidth=c.state==='closed'?2.5:1.5;C.beginPath();C.moveTo(sx(c.from_xy[0]),sy(c.from_xy[1]));C.lineTo(sx(c.to_xy[0]),sy(c.to_xy[1]));C.stroke();C.setLineDash([]);
+      if(c.state==='closed'){C.fillStyle='rgba(255,106,77,.95)';C.font='600 11px "Barlow Condensed"';C.textAlign='center';const mx=(c.from_xy[0]+c.to_xy[0])/2,my=(c.from_xy[1]+c.to_xy[1])/2;C.fillText(`${short(c.to)} · danger ${c.danger_if_arrives}`,cx(sx(mx)),sy(my)+14)}}
+    C.beginPath();C.arc(sx(x),sy(y),TACKLE_REACH/L*(PW-2*PAD),0,7);C.fillStyle=v.can_tackle?'rgba(123,201,160,.35)':'rgba(123,201,160,.15)';C.fill();
+    if(v.marking&&v.marking_m<6){const [qx,qy]=pos(row,v.marking);C.setLineDash([2,4]);C.strokeStyle='rgba(243,239,230,.6)';C.lineWidth=1;C.beginPath();C.moveTo(sx(x),sy(y));C.lineTo(sx(qx),sy(qy));C.stroke();C.setLineDash([])}}
+  else{if(v.lane_from_carrier){const l=v.lane_from_carrier;C.setLineDash(l.state==='open'?[]:[5,5]);C.strokeStyle=laneColor[l.state];C.lineWidth=2;C.beginPath();C.moveTo(sx(l.from_xy[0]),sy(l.from_xy[1]));C.lineTo(sx(l.to_xy[0]),sy(l.to_xy[1]));C.stroke();C.setLineDash([])}
+    C.beginPath();C.arc(sx(x),sy(y),Math.min(v.space_m,12)/L*(PW-2*PAD),0,7);C.strokeStyle='rgba(243,239,230,.45)';C.lineWidth=1;C.setLineDash([3,4]);C.stroke();C.setLineDash([])}}
+function updateVbox(v){const b=$('#vbox');b.classList.toggle('right',v.xy[0]<L/2);let h=`<b>${v.read}</b>`;
+  if(v.view==='carrier')h+=v.lanes.slice(0,4).map(l=>`<div class="opt"><i style="background:${laneColor[l.state]}"></i><span class="k">${short(l.to)}</span><span>${l.state} · ${l.distance} m · difficulty ${l.difficulty} · danger ${l.danger_now}→${l.danger_if_arrives}</span></div>`).join('');
+  else if(v.view==='defender')h+=v.closing.slice(0,3).map(c=>`<div class="opt"><i style="background:${c.state==='closed'?laneColor.blocked:laneColor.contested}"></i><span class="k">${short(c.to)}</span><span>${c.state} · ${c.my_distance_to_lane} m from the lane · danger if it arrives ${c.danger_if_arrives}</span></div>`).join('')+(v.marking?`<div class="opt"><i style="background:rgba(243,239,230,.6)"></i><span class="k">${short(v.marking)}</span><span>nearest opponent, ${v.marking_m} m</span></div>`:'');
+  b.innerHTML=h;b.classList.add('show')}
+
 function pretty(k){return k.replace('_p90',' per 90').replace(/_/g,' ')}
 function fmtv(k,v){if(k==='possession'||k==='pass_accuracy')return Math.round(v*100)+'%';return typeof v==='number'?(Number.isInteger(v)?v:v.toFixed(2)):v}
 function wirePanel(){
