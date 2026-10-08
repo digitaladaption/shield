@@ -1,0 +1,173 @@
+{
+  "synthetic": true,
+  "pitch": {
+    "length": 105.0,
+    "width": 68.0
+  },
+  "tick_seconds": 0.5,
+  "clubs": {
+    "home": "Northbridge FC",
+    "away": "Eastvale United"
+  },
+  "formations": {
+    "home": "4-3-3",
+    "away": "4-4-2"
+  },
+  "players": [
+    {
+      "id": "H01",
+      "name": "Joel Moreau",
+      "team": "home",
+      "role": "GK",
+      "number": 1
+    },
+    {
+      "id": "H02",
+      "name": "Rafael Brennan",
+      "team": "home",
+      "role": "LB",
+      "number": 2
+    },
+    {
+      "id": "H03",
+      "name": "Mateo Reyes",
+      "team": "home",
+      "role": "LCB",
+      "number": 3
+    },
+    {
+      "id": "H04",
+      "name": "Arvid Petrov",
+      "team": "home",
+      "role": "RCB",
+      "number": 4
+    },
+    {
+      "id": "H05",
+      "name": "Jonas Kerrigan",
+      "team": "home",
+      "role": "RB",
+      "number": 5
+    },
+    {
+      "id": "H06",
+      "name": "Dario Okonkwo-Hale",
+      "team": "home",
+      "role": "CDM",
+      "number": 6
+    },
+    {
+      "id": "H07",
+      "name": "Samir Kerrigan",
+      "team": "home",
+      "role": "LCM",
+      "number": 7
+    },
+    {
+      "id": "H08",
+      "name": "Oleg Okafor",
+      "team": "home",
+      "role": "RCM",
+      "number": 8
+    },
+    {
+      "id": "H09",
+      "name": "Dylan Osei",
+      "team": "home",
+      "role": "LW",
+      "number": 9
+    },
+    {
+      "id": "H10",
+      "name": "Rafael Bianchi",
+      "team": "home",
+      "role": "ST",
+      "number": 10
+    },
+    {
+      "id": "H11",
+      "name": "Rafael Delacroix",
+      "team": "home",
+      "role": "RW",
+      "number": 11
+    },
+    {
+      "id": "A01",
+      "name": "Milo Moreau",
+      "team": "away",
+      "role": "GK",
+      "number": 1
+    },
+    {
+      "id": "A02",
+      "name": "Elias Calloway",
+      "team": "away",
+      "role": "LB",
+      "number": 2
+    },
+    {
+      "id": "A03",
+      "name": "Callum Calloway",
+      "team": "away",
+      "role": "LCB",
+      "number": 3
+    },
+    {
+      "id": "A04",
+      "name": "Luca Okafor",
+      "team": "away",
+      "role": "RCB",
+      "number": 4
+    },
+    {
+      "id": "A05",
+      "name": "Dylan Haugen",
+      "team": "away",
+      "role": "RB",
+      "number": 5
+    },
+    {
+      "id": "A06",
+      "name": "Samir Quill",
+      "team": "away",
+      "role": "LM",
+      "number": 6
+    },
+    {
+      "id": "A07",
+      "name": "Rafael Strand",
+      "team": "away",
+      "role": "LCM",
+      "number": 7
+    },
+    {
+      "id": "A08",
+      "name": "Hugo Calloway",
+      "team": "away",
+      "role": "RCM",
+      "number": 8
+    },
+    {
+      "id": "A09",
+      "name": "Joel Falk",
+      "team": "away",
+      "role": "RM",
+      "number": 9
+    },
+    {
+      "id": "A10",
+      "name": "Ruben Reyes",
+      "team": "away",
+      "role": "LS",
+      "number": 10
+    },
+    {
+      "id": "A11",
+      "name": "Casper Tanaka",
+      "team": "away",
+      "role": "RS",
+      "number": 11
+    }
+  ],
+  "notes": "All data is invented. No real match or player data is used."
+}

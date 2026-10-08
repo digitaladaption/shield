@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.env
+data/*/frames.csv
+data/*/events.jsonl
+web/data/bundle.json
+.pytest_cache/

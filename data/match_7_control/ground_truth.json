@@ -1,0 +1,14 @@
+{
+  "do_not_read_from_engine": true,
+  "shield_player": "H06",
+  "shield_name": "Dario Okonkwo-Hale",
+  "shield_on": false,
+  "planted": {
+    "interception_multiplier": 1.6,
+    "tackle_multiplier": 2.2,
+    "lane_reach_m": 5.0,
+    "tackle_reach_m": 3.0,
+    "positioning": "screens the line between ball and own goal"
+  },
+  "seed": 7
+}
