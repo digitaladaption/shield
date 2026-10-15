@@ -21,7 +21,7 @@ echo "$AI" > .azure-ai-name
 
 SUB=$(az account show --query id -o tsv)
 echo "== subscription $SUB, resource group $RG in $LOC"
-az provider register -n Microsoft.CognitiveServices --wait
+for ns in Microsoft.CognitiveServices Microsoft.ContainerRegistry Microsoft.App Microsoft.OperationalInsights; do az provider register -n $ns --wait; done
 az group create -n "$RG" -l "$LOC" -o none
 
 echo "== Foundry resource $AI"
