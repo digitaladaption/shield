@@ -25,8 +25,10 @@ az provider register -n Microsoft.CognitiveServices --wait
 az group create -n "$RG" -l "$LOC" -o none
 
 echo "== Foundry resource $AI"
-az cognitiveservices account create -n "$AI" -g "$RG" -l "$LOC" \
-  --kind AIServices --sku S0 --custom-domain "$AI" --yes -o none
+if ! az cognitiveservices account show -n "$AI" -g "$RG" -o none 2>/dev/null; then
+  az cognitiveservices account create -n "$AI" -g "$RG" -l "$LOC" \
+    --kind AIServices --sku S0 --custom-domain "$AI" --yes -o none
+fi
 # allow projects on the account
 az rest --method patch \
   --url "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.CognitiveServices/accounts/$AI?api-version=$API" \
