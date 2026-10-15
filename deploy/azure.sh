@@ -55,12 +55,15 @@ az containerapp up -n "$APP" -g "$RG" -l "$LOC" --source . \
 
 echo "== identity and role"
 PRINCIPAL=$(az containerapp identity assign -n "$APP" -g "$RG" --system-assigned --query principalId -o tsv)
-SCOPE="/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.CognitiveServices/accounts/$AI"
-az role assignment create --assignee-object-id "$PRINCIPAL" --assignee-principal-type ServicePrincipal \
-  --role "Azure AI User" --scope "$SCOPE" -o none 2>/dev/null || true
-az role assignment create --assignee-object-id "$PRINCIPAL" --assignee-principal-type ServicePrincipal \
-  --role "Cognitive Services OpenAI User" --scope "$SCOPE" -o none 2>/dev/null || true
-sleep 20
+ACCOUNT="/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.CognitiveServices/accounts/$AI"
+for SCOPE in "$ACCOUNT" "$ACCOUNT/projects/$PROJECT"; do
+  for ROLE in "Cognitive Services OpenAI User" "Cognitive Services User"; do
+    az role assignment create --assignee-object-id "$PRINCIPAL" --assignee-principal-type ServicePrincipal \
+      --role "$ROLE" --scope "$SCOPE" -o none && echo "   $ROLE on ${SCOPE##*/}"
+  done
+done
+echo "   waiting for the role to propagate"
+sleep 60
 az containerapp revision restart -n "$APP" -g "$RG" \
   --revision "$(az containerapp revision list -n "$APP" -g "$RG" --query '[?properties.active].name | [0]' -o tsv)" -o none || true
 
