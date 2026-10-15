@@ -38,7 +38,10 @@ from shield.engine.match import load_match  # noqa: E402
 
 MODES = {
     "analyst": "Analyst mode: dense, numeric, show the reasoning. 5 to 7 sentences. Use the metrics.",
-    "casual": "Casual fan mode: 3 sentences, plain words, one 'why you should care' line. Numbers only when they land.",
+    "casual": "Casual fan mode: 3 or 4 sentences, plain words. Sentence 1: the score and a hook. Sentence 2: the goal. "
+              "Sentence 3: the player who ended the most attacks or prevented the most threat, with his number, because that is "
+              "the work the highlights miss and the whole point. Last: why the viewer should care about him. "
+              "Never lead with possession or pass accuracy; the fan can see those on any graphic.",
     "player": "Player focus mode: tell the match through ONE player's eyes, on and off the ball. 4 to 6 sentences. "
               "Explain what he did that the highlights would miss.",
     "kid": "Play-like-your-idol mode for a young player (age 9 to 14) and their coach. 4 to 5 short sentences. "
@@ -178,9 +181,12 @@ class NarratorExecutor(Executor):
         if self.agent is None:
             text = local_narrate(req)
         else:
+            reference = local_narrate(req)   # the house pundit's call: same facts, same angle; the model re-tells it
             prompt = (f"MODE: {MODES[req.mode]}\n"
                       f"PLAYER FOCUS: {req.player_focus or 'none'}\n"
-                      f"FACT PACKET (JSON):\n{json.dumps(req.packet, ensure_ascii=False)}\n")
+                      f"FACT PACKET (JSON):\n{json.dumps(req.packet, ensure_ascii=False)}\n\n"
+                      f"REFERENCE CALL (how our studio pundit would say it; keep its angle, its facts and its citations, "
+                      f"but say it in your own words, fresh phrasing, same register, no copying sentences):\n{reference}\n")
             if req.feedback:
                 prompt += f"\nYOUR PREVIOUS DRAFT WAS REJECTED BY THE VERIFIER. Fix these and rewrite:\n{req.feedback}\n"
             resp = await self.agent.run(prompt)
