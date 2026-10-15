@@ -126,8 +126,10 @@ Copy `.env.example` to `.env`, set `FOUNDRY_PROJECT_ENDPOINT` and `FOUNDRY_MODEL
 
 ### Deploy
 
+One script from Azure Cloud Shell (bash), creates the Foundry resource, project, model deployment and the Container App with a managed identity:
+
 ```bash
-az containerapp up --name shield --resource-group shield-rg --source . --ingress external --target-port 8080
+git clone https://github.com/digitaladaption/shield && cd shield && bash deploy/azure.sh
 ```
 
 ## Repository
