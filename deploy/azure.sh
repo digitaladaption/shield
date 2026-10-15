@@ -21,11 +21,12 @@ echo "$AI" > .azure-ai-name
 
 SUB=$(az account show --query id -o tsv)
 echo "== subscription $SUB, resource group $RG in $LOC"
+az provider register -n Microsoft.CognitiveServices --wait
 az group create -n "$RG" -l "$LOC" -o none
 
 echo "== Foundry resource $AI"
 az cognitiveservices account create -n "$AI" -g "$RG" -l "$LOC" \
-  --kind AIServices --sku S0 --custom-domain "$AI" --yes -o none 2>/dev/null || true
+  --kind AIServices --sku S0 --custom-domain "$AI" --yes -o none
 # allow projects on the account
 az rest --method patch \
   --url "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.CognitiveServices/accounts/$AI?api-version=$API" \
@@ -48,7 +49,7 @@ echo "== Container App $APP (builds the image in the cloud, 5-10 minutes)"
 az extension add --name containerapp --upgrade -o none 2>/dev/null || true
 az containerapp up -n "$APP" -g "$RG" -l "$LOC" --source . \
   --ingress external --target-port 8080 \
-  --env-vars "FOUNDRY_PROJECT_ENDPOINT=$ENDPOINT" "FOUNDRY_MODEL=$MODEL" -o none
+  --env-vars "FOUNDRY_PROJECT_ENDPOINT=$ENDPOINT" "FOUNDRY_MODEL=$MODEL"
 
 echo "== identity and role"
 PRINCIPAL=$(az containerapp identity assign -n "$APP" -g "$RG" --system-assigned --query principalId -o tsv)
