@@ -62,7 +62,7 @@ az role assignment create --assignee-object-id "$PRINCIPAL" --assignee-principal
   --role "Cognitive Services OpenAI User" --scope "$SCOPE" -o none 2>/dev/null || true
 sleep 20
 az containerapp revision restart -n "$APP" -g "$RG" \
-  --revision "$(az containerapp revision list -n "$APP" -g "$RG" --query '[0].name' -o tsv)" -o none
+  --revision "$(az containerapp revision list -n "$APP" -g "$RG" --query '[?properties.active].name | [0]' -o tsv)" -o none || true
 
 URL="https://$(az containerapp show -n "$APP" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)"
 echo

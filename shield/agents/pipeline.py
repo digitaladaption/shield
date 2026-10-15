@@ -113,7 +113,10 @@ def make_chat_client():
     try:
         if os.getenv("FOUNDRY_PROJECT_ENDPOINT"):
             from agent_framework.foundry import FoundryChatClient
-            return FoundryChatClient(model=os.getenv("FOUNDRY_MODEL", "gpt-4.1-mini")), "microsoft-foundry"
+            from azure.identity import DefaultAzureCredential   # az login locally, managed identity on Container Apps
+            return FoundryChatClient(project_endpoint=os.getenv("FOUNDRY_PROJECT_ENDPOINT"),
+                                     model=os.getenv("FOUNDRY_MODEL", "gpt-4.1-mini"),
+                                     credential=DefaultAzureCredential()), "microsoft-foundry"
         if os.getenv("AZURE_OPENAI_ENDPOINT"):
             from agent_framework.openai import OpenAIChatClient
             return OpenAIChatClient(model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini"),
